@@ -1,0 +1,19 @@
+# Build output
+/terraform-provider-automox
+/dist/
+*.test
+
+# Go workspace
+go.work
+go.work.sum
+
+# Local Terraform state from manual testing
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+
+# Credentials — never commit
+*.asc
+*.gpg
+.env
