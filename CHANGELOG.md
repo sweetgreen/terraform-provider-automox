@@ -4,6 +4,15 @@
 
 ### Added
 
+- Provider configuration: `api_key`, `organization_id`, and `base_url`, each
+  settable from the environment so credentials stay out of configuration files
+  and state. The API key is marked sensitive and is masked in logs. A value that
+  is not known at plan time reports which attribute to make concrete rather than
+  failing generically.
+- Acceptance-test guards. Tests requiring write access skip with a stated reason
+  when the credential is read-only, rather than passing without verifying
+  anything, and refuse to run at all until the operator acknowledges that there
+  is no Automox sandbox and objects are created in a live organization.
 - Schedule bitmask codec translating Automox's encoded `schedule_days` and
   `schedule_months` integers to and from named days and months, so a policy schedule
   can be written as `["monday", "tuesday"]` instead of `6`.
