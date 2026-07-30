@@ -20,6 +20,16 @@
 
 ### Added
 
+- `automox_scheduled_window` resource for maintenance exclusion windows, with
+  full create, read, update, delete, and import.
+
+  Windows are scoped by organization UUID and identify server groups by UUID,
+  where every other endpoint uses integer IDs; the provider resolves both, so
+  configuration references an `automox_server_group` directly through its `uuid`
+  attribute. Recurrence rules are validated before the request, since Automox
+  accepts only a narrow subset of RFC 5545 and reports violations with a message
+  naming a field the practitioner never wrote.
+
 - `automox_policy` resource covering all three Automox policy kinds — patch,
   worklet, and required software — with full create, read, update, delete, and
   import.
