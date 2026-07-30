@@ -14,6 +14,12 @@
   and retry that honours the service's documented one-minute rate-limit penalty on
   device listing. Query parameters are passed through verbatim, so the API's
   colon- and bracket-suffixed filter names work as written.
+- HTTP request logging through Terraform's own log stream, visible under
+  `TF_LOG=DEBUG`. Every request records method, URL, status, and duration, plus
+  the server's `Retry-After` when rate limited. Credentials are redacted: the
+  `Authorization` header is replaced with `REDACTED`, and response bodies are not
+  logged at all, since Automox responses can carry device inventories and
+  organization access keys.
 - Organization identifier resolution. Automox scopes some endpoints by integer id
   and others by UUID for the same organization; the provider takes only the
   integer and resolves the UUID once, so configuration cannot carry two

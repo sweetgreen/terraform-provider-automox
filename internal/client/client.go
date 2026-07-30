@@ -70,10 +70,17 @@ func New(opts Options) (*Client, error) {
 		return nil, fmt.Errorf("automox: base_url %q must include a scheme and host", rawURL)
 	}
 
+	// Logging is layered onto whatever transport the caller supplied, rather than
+	// only onto the default one, so a custom client (a test server, a proxy for
+	// capture) is still observable.
 	httpClient := opts.HTTPClient
 	if httpClient == nil {
 		httpClient = &http.Client{Timeout: defaultTimeout}
+	} else {
+		clone := *httpClient
+		httpClient = &clone
 	}
+	httpClient.Transport = newLoggingTransport(httpClient.Transport, opts.APIKey)
 
 	retry := DefaultRetryPolicy()
 	if opts.Retry != nil {
