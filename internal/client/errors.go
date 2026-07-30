@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"sort"
 	"strings"
+	"time"
 )
 
 // maxBodyExcerpt bounds how much of an unrecognized response body is echoed into a
@@ -36,6 +37,10 @@ type APIError struct {
 	// BodyExcerpt is set only when no known envelope matched, so an unfamiliar
 	// shape still produces an actionable message instead of silence.
 	BodyExcerpt string
+
+	// RetryAfter carries the server's own backoff guidance when it sends a
+	// Retry-After header. Zero means the header was absent or unparseable.
+	RetryAfter time.Duration
 }
 
 func (e *APIError) Error() string {

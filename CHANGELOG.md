@@ -10,6 +10,14 @@
 - Automox API error handling covering all five response envelopes the service uses,
   with per-field detail where the API provides it and a bounded body excerpt when it
   returns something unrecognized.
+- Automox API client with bearer authentication, automatic organization scoping,
+  and retry that honours the service's documented one-minute rate-limit penalty on
+  device listing. Query parameters are passed through verbatim, so the API's
+  colon- and bracket-suffixed filter names work as written.
+- Organization identifier resolution. Automox scopes some endpoints by integer id
+  and others by UUID for the same organization; the provider takes only the
+  integer and resolves the UUID once, so configuration cannot carry two
+  identifiers that drift apart.
 - Deletion detection that accounts for Automox reporting absent resources
   inconsistently: policies return 404, but server groups return 403 for an id that
   was deleted or never existed. A 403 from those endpoints is confirmed against the
