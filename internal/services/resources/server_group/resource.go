@@ -135,9 +135,15 @@ func (r *serverGroupResource) Schema(_ context.Context, _ resource.SchemaRequest
 					"Used with `enable_wsus`.",
 			},
 			"policies": schema.ListAttribute{
-				Optional:            true,
-				ElementType:         types.Int64Type,
-				MarkdownDescription: "IDs of policies attached to this group.",
+				Optional:    true,
+				Computed:    true,
+				ElementType: types.Int64Type,
+				MarkdownDescription: "IDs of policies attached to this group.\n\n" +
+					"This relationship has two sides: setting `server_groups` on an " +
+					"`automox_policy` also adds that policy here. The attribute is therefore " +
+					"computed as well as optional, so a group whose configuration does not " +
+					"mention policies accepts whatever Automox reports rather than trying to " +
+					"detach policies attached from the other side.",
 			},
 			"organization_id": schema.Int64Attribute{
 				Computed:            true,

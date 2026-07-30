@@ -111,7 +111,7 @@ func flatten(ctx context.Context, api *apiServerGroup, prior serverGroupModel) (
 	model.EnableWSUS = optionalBool(api.enableWSUS(), prior.EnableWSUS)
 	model.WSUSServer = optionalString(api.wsusServer(), prior.WSUSServer)
 
-	policies, policyDiags := optionalPolicies(ctx, api.Policies, prior.Policies)
+	policies, policyDiags := policiesFromAPI(ctx, api.Policies)
 	diags.Append(policyDiags...)
 	model.Policies = policies
 
@@ -142,9 +142,16 @@ func optionalBool(apiValue *bool, prior types.Bool) types.Bool {
 	return types.BoolValue(*apiValue)
 }
 
-func optionalPolicies(ctx context.Context, apiValue []int64, prior types.List) (types.List, diag.Diagnostics) {
-	if apiValue == nil || (len(apiValue) == 0 && prior.IsNull()) {
-		return types.ListNull(types.Int64Type), nil
+// policiesFromAPI always reflects what Automox reports.
+//
+// Unlike notes, this attribute is Optional AND Computed, because the membership
+// is also written from the policy side: creating an automox_policy that targets
+// this group makes Automox add the policy here. Preserving a configured null
+// would make the group perpetually plan to detach policies it never attached,
+// and the two resources would fight on every apply.
+func policiesFromAPI(ctx context.Context, apiValue []int64) (types.List, diag.Diagnostics) {
+	if apiValue == nil {
+		apiValue = []int64{}
 	}
 	return types.ListValueFrom(ctx, types.Int64Type, apiValue)
 }

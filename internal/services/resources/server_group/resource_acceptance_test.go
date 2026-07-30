@@ -91,10 +91,12 @@ func TestAccServerGroup_Lifecycle(t *testing.T) {
 					// device alone" as "disable it everywhere".
 					resource.TestCheckNoResourceAttr("automox_server_group.test", "enable_os_auto_update"),
 					resource.TestCheckNoResourceAttr("automox_server_group.test", "enable_wsus"),
-					// Automox returns "" for an omitted note and [] for omitted
-					// policies; neither may leak into state as a value.
+					// Automox returns "" for an omitted note; that must not leak into
+					// state as an empty string where the configuration said nothing.
 					resource.TestCheckNoResourceAttr("automox_server_group.test", "notes"),
-					resource.TestCheckNoResourceAttr("automox_server_group.test", "policies"),
+					// policies is Optional+Computed because a policy can attach itself
+					// from the other side, so it is an empty list rather than null.
+					resource.TestCheckResourceAttr("automox_server_group.test", "policies.#", "0"),
 				),
 			},
 			{
@@ -201,14 +203,10 @@ func checkDestroy(s *terraform.State) error {
 		}
 	}
 
-	// Belt and braces: nothing this suite created may survive, even if it fell
-	// out of state.
-	for _, g := range groups {
-		if acceptance.IsTestingObject(g.Name) {
-			return fmt.Errorf(
-				"a %s-prefixed server group was left behind: %d (%q)",
-				acceptance.TestingPrefix, g.ID, g.Name)
-		}
-	}
+	// Deliberately no organization-wide sweep for TESTING-prefixed objects here.
+	// Test packages run concurrently, so a sweep would observe objects another
+	// package is still using and fail for a reason unrelated to this test. The
+	// state-based check above is precise; the whole-organization audit belongs in
+	// a serial post-run step, not in per-resource teardown.
 	return nil
 }

@@ -20,6 +20,20 @@
 
 ### Added
 
+- `automox_policy` resource covering all three Automox policy kinds — patch,
+  worklet, and required software — with full create, read, update, delete, and
+  import.
+
+  Schedules can be written in plain terms: `schedule_days_of_week = ["monday",
+  "thursday"]` rather than the encoded `18` Automox stores. Weeks of the month
+  remain encoded-only, because that bit order is not confirmed and a wrong guess
+  would silently move when patching runs.
+
+  Policy names must be unique within an organization. Automox returns no
+  identifier when a policy is created, so the provider locates the new policy by
+  name; where that would be ambiguous it fails and says so rather than adopting
+  an arbitrary match.
+
 - `automox_server_group` resource with full create, read, update, delete, and
   import. Scan interval, parent group, colour, notes, attached policies, and the
   OS auto-update and WSUS settings are all managed.
