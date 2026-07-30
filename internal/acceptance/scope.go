@@ -44,8 +44,23 @@ const (
 // identifiable at a glance in the Automox console.
 const TestingPrefix = "TESTING"
 
+// SkipUnlessAcceptance skips the calling test unless acceptance testing is
+// enabled. It must be the first line of any TestAcc function.
+//
+// resource.Test applies this gate itself, but only once it is running. Anything
+// a test does *before* that — reading environment, looking up a parent group,
+// asserting configuration — would otherwise run during a plain `go test ./...`
+// and fail for a contributor who has no Automox credentials. An offline unit
+// suite that cannot pass without cloud access is not an offline suite.
+func SkipUnlessAcceptance(t *testing.T) {
+	t.Helper()
+	if os.Getenv(EnvTFAcc) == "" {
+		t.Skipf("skipping acceptance test: set %s=1 to run tests against a live Automox organization", EnvTFAcc)
+	}
+}
+
 // PreCheck asserts the configuration every acceptance test needs. Call it from
-// TestCase.PreCheck.
+// TestCase.PreCheck, after SkipUnlessAcceptance has gated the test.
 func PreCheck(t *testing.T) {
 	t.Helper()
 

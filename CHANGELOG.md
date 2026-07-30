@@ -4,6 +4,17 @@
 
 ### Added
 
+- `automox_server_group` resource with full create, read, update, delete, and
+  import. Scan interval, parent group, colour, notes, attached policies, and the
+  OS auto-update and WSUS settings are all managed.
+
+  `enable_os_auto_update` and `enable_wsus` are three-state: leaving one unset
+  means each device keeps its current behaviour, which is not the same as setting
+  it to `false` and actively changing every device in the group. WSUS settings are
+  written as `enable_wsus`/`wsus_server` and read back from a nested
+  `wsus_config` object, which the provider maps so the configuration round-trips
+  without a permanent diff.
+
 - Provider configuration: `api_key`, `organization_id`, and `base_url`, each
   settable from the environment so credentials stay out of configuration files
   and state. The API key is marked sensitive and is masked in logs. A value that
