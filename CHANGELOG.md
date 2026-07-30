@@ -2,6 +2,22 @@
 
 ## 0.1.0 (unreleased)
 
+### Security
+
+- All seven vulnerabilities reachable from provider code are resolved: gRPC is
+  upgraded past an authorization bypass that sat directly beneath the plugin
+  server, `golang.org/x/net` and `golang.org/x/text` are upgraded, and the Go
+  floor is raised to 1.26.5 to pick up standard library fixes in `crypto/tls`,
+  `crypto/x509`, and `net/textproto`. `govulncheck` reports none remaining.
+
+  Dependabot reports a larger number because it flags any module present in
+  `go.sum` without checking whether the code can reach it. The remainder come
+  from `terraform-plugin-testing`, which pulls in `go-git`, `ProtonMail/go-crypto`,
+  `circl`, `hc-install`, and `terraform-exec` so that it can install Terraform and
+  clone modules during acceptance runs. None of them ship: the released binary
+  embeds 24 modules and none is from that tree, so the exposure is limited to CI
+  runners executing acceptance tests, not to anyone using the provider.
+
 ### Added
 
 - `automox_server_group` resource with full create, read, update, delete, and
