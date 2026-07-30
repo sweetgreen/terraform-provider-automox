@@ -67,14 +67,19 @@ func (e *APIError) Error() string {
 	return b.String()
 }
 
-// IsNotFound reports whether the resource is genuinely absent, which is the only
-// condition under which a caller may drop it from Terraform state.
+// IsNotFound reports a clean 404.
 //
-// This deliberately tests the status code and nothing else. In particular a 403 is
-// NOT absence: the Automox API returns 403 both for a credential lacking write
-// scope and for endpoints requiring Full Administrator. Treating that as "gone"
-// would make Terraform plan the destruction and recreation of live patch policies
-// governing production endpoints.
+// This deliberately tests the status code and nothing else, and on its own it is
+// NOT sufficient to decide that a resource should be dropped from Terraform state.
+// Automox is inconsistent: /policies returns 404 for an absent id, but
+// /servergroups returns 403 for one. Use IsGone in gone.go, which takes the
+// endpoint's reporting style into account.
+//
+// A 403 is never absence by itself. The API returns it for a credential lacking
+// write scope, for Full-Administrator-only endpoints, and for absent ids on some
+// endpoints. Treating it as "gone" unconditionally would let a credential
+// regression look like deletion and make Terraform plan the destruction and
+// recreation of live patch policies governing production endpoints.
 func IsNotFound(err error) bool {
 	apiErr, ok := err.(*APIError)
 	return ok && apiErr.StatusCode == http.StatusNotFound
