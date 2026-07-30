@@ -20,6 +20,13 @@
   `Authorization` header is replaced with `REDACTED`, and response bodies are not
   logged at all, since Automox responses can carry device inventories and
   organization access keys.
+- Paginated collection reads that return complete result sets. Automox wraps
+  collections in three different envelope shapes and pages them three different
+  ways, with no relationship between which endpoint uses which; data sources
+  declare the shape and get every record without needing to know the convention.
+  A failure part-way through a walk aborts rather than returning a partial
+  collection, because a truncated fleet listing is indistinguishable from a fleet
+  that shrank.
 - Organization identifier resolution. Automox scopes some endpoints by integer id
   and others by UUID for the same organization; the provider takes only the
   integer and resolves the UUID once, so configuration cannot carry two
