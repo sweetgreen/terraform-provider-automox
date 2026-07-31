@@ -30,7 +30,16 @@ builds:
       - arm64
     binary: '{{ .ProjectName }}_v{{ .Version }}'
 archives:
-  - format: zip
+  # `formats` (plural), not the deprecated `format`. goreleaser still accepts the
+  # singular form but `goreleaser check` fails on it, and a version that drops it
+  # would break the release after the tag already exists -- the awkward state this
+  # repository's pre-release checks exist to avoid. The action does not pin a
+  # goreleaser binary version, so that upgrade is not ours to schedule.
+  #
+  # zip and this exact name template are registry contracts, not preferences:
+  # registry.sweetgreen.engineering matches assets on
+  # {ProjectName}_{Version}_{Os}_{Arch}.zip and finds nothing if either changes.
+  - formats: [zip]
     name_template: '{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}'
 checksum:
   extra_files:
