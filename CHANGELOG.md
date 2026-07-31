@@ -20,6 +20,11 @@
 
 ### Added
 
+- A static guard asserting every acceptance test refuses to run without
+  `TF_ACC`. These tests create real objects in a live Automox organization, so a
+  new one that forgot the check would mean continuous integration writing to
+  production on every pull request rather than merely a failing test.
+
 - `automox_policy_file` resource for the files a worklet needs at run time — an
   installer, or a script it calls.
 
