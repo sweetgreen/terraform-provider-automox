@@ -198,10 +198,13 @@ func flatten(ctx context.Context, api *apiPolicy, prior policyModel) (policyMode
 		ScheduleWeeksOfMonth: types.Int64Value(api.ScheduleWeeksOfMonth),
 	}
 
+	// Every policy type observed live carries a UUID, required_software included.
+	// The empty case is still handled rather than assumed away, so that a policy
+	// returned without one becomes null instead of an empty string that would then
+	// show as a diff against the computed attribute.
 	if api.UUID != "" {
 		model.UUID = types.StringValue(api.UUID)
 	} else {
-		// required_software policies have no UUID at all.
 		model.UUID = types.StringNull()
 	}
 

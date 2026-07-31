@@ -52,6 +52,14 @@
   name; where that would be ambiguous it fails and says so rather than adopting
   an arbitrary match.
 
+  Worklet and required-software policies are checked before the request rather
+  than after. Automox reports a missing worklet script as "the
+  configuration.evaluation code field is required" — a spaced name matching
+  nothing in your configuration — and requires `os_family` on both kinds without
+  documenting it for either. Those, and the fact that `os_family` is matched
+  exactly so `windows` and `macOS` are rejected, are now plan-time errors naming
+  the attribute to fix.
+
 - `automox_server_group` resource with full create, read, update, delete, and
   import. Scan interval, parent group, colour, notes, attached policies, and the
   OS auto-update and WSUS settings are all managed.

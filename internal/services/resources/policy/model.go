@@ -11,6 +11,14 @@ const (
 	TypeRequiredSoftware = "required_software"
 )
 
+// configuration.os_family values, required on worklet and required-software
+// policies. Automox matches them exactly: "windows" and "macOS" are rejected.
+const (
+	OSFamilyWindows = "Windows"
+	OSFamilyMac     = "Mac"
+	OSFamilyLinux   = "Linux"
+)
+
 // patch_rule values.
 const (
 	PatchRuleAll      = "all"

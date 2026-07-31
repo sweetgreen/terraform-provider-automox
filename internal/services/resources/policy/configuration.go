@@ -115,9 +115,17 @@ func configurationSchema() schema.SingleNestedAttribute {
 
 			// --- worklet, and returned on patch policies too ---
 			"os_family": schema.StringAttribute{
-				Optional:            true,
-				Computed:            true,
-				MarkdownDescription: "`Windows`, `Mac`, or `Linux`.",
+				Optional: true,
+				Computed: true,
+				MarkdownDescription: "`Windows`, `Mac`, or `Linux`. Required for worklet and " +
+					"required-software policies.\n\n" +
+					"Matched exactly: `macOS` and lowercase `windows` are both rejected.",
+				Validators: []validator.String{
+					// Case-sensitive deliberately. OneOf is case-sensitive and the API
+					// rejects "windows" and "macOS", so an incorrectly cased value is
+					// caught at plan time rather than becoming a 400 during apply.
+					stringvalidator.OneOf(OSFamilyWindows, OSFamilyMac, OSFamilyLinux),
+				},
 			},
 			"evaluation_code": schema.StringAttribute{
 				Optional: true,

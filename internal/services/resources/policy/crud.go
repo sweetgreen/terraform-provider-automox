@@ -162,7 +162,13 @@ func (r *policyResource) Update(ctx context.Context, req resource.UpdateRequest,
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	// The ID is part of the update body as well as the path.
+	// The ID goes in the body as well as the path, and it is load-bearing rather
+	// than redundant: Automox re-checks name uniqueness on update, and `id` is what
+	// tells it to exclude this policy from that check. Without it, any update that
+	// keeps the policy's current name -- that is, any change which is not also a
+	// rename -- is rejected with "A policy with this name already exists".
+	// Verified live on both patch and worklet policies. Covered by the
+	// rename-free update step in TestAccPolicy_WorkletLifecycle.
 	body["id"] = id
 
 	if err := r.client.Do(ctx, client.Request{

@@ -65,7 +65,17 @@ func (r *policyResource) ValidateConfig(ctx context.Context, req resource.Valida
 	switch policyType {
 	case TypePatch:
 		validatePatchConfiguration(cfg, resp)
+	case TypeWorklet:
+		// Automox reports these in a spaced form ("The configuration.evaluation
+		// code field is required"), which does not match anything the practitioner
+		// wrote and is awkward to map back to the attribute.
+		requireSet(cfg, "os_family", TypeWorklet, resp)
+		requireSet(cfg, "evaluation_code", TypeWorklet, resp)
+		requireSet(cfg, "remediation_code", TypeWorklet, resp)
 	case TypeRequiredSoftware:
+		// os_family is required here as well. The vendor documentation lists it for
+		// neither type; the live API rejects both without it.
+		requireSet(cfg, "os_family", TypeRequiredSoftware, resp)
 		requireSet(cfg, "package_name", TypeRequiredSoftware, resp)
 		requireSet(cfg, "package_version", TypeRequiredSoftware, resp)
 		requireSet(cfg, "installation_code", TypeRequiredSoftware, resp)
