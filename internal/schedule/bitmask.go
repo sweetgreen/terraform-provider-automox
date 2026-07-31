@@ -19,12 +19,29 @@
 // An earlier reading of bit 1 as Sunday was disproved: days=4 resolves to Tuesday
 // and days=16 to Thursday, neither consistent with a Sunday-first order.
 //
-// Weeks of the month are deliberately NOT exposed in named form. One policy
-// contradicts the ordering — a single-month policy with only bit 2 set whose
-// next_remediation (2027-03-05) falls in week 1 — and the cause is unresolved.
-// Shipping a friendly form on an unverified ordering risks silently shifting when
-// patching runs across production endpoints, so callers handle the raw integer
-// until a round-trip settles it.
+// Weeks of the month are deliberately NOT exposed in named form, and a
+// controlled round-trip has now shown why.
+//
+// Twelve purpose-built policies were created against the live API on 2026-07-31,
+// each targeting an empty group, varying one weekday and one week bit, and their
+// API-computed next_remediation dates compared against the candidate orderings:
+//
+//	"bit N = the Nth occurrence of that weekday"      8 of 12
+//	calendar week of the month, Monday-start          6 of 12
+//	calendar week of the month, Wednesday-start      12 of 12
+//
+// So the intuitive reading — bit 2 means "the second Tuesday" — is simply wrong,
+// and would have been wrong in a third of cases. For week bit 2, Automox
+// returned Wed 5, Thu 6, Fri 7, Sun 9, Mon 10 and Tue 11 August 2026: one
+// contiguous Wednesday-to-Tuesday span, not the second occurrence of each day.
+//
+// A Wednesday-start week is odd enough to be suspect, and one month cannot
+// separate it from Tuesday- or Thursday-start, which fit 11 of 12. What the
+// experiment does establish beyond doubt is that no simple "Nth weekday" reading
+// holds. Exposing a named form on any of these would silently move when patching
+// runs across production endpoints, so callers continue to handle the raw
+// integer. Settling it needs the same experiment across a second month whose
+// first day falls on a different weekday.
 package schedule
 
 import (

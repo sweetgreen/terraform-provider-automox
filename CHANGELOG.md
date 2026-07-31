@@ -132,9 +132,13 @@
   import.
 
   Schedules can be written in plain terms: `schedule_days_of_week = ["monday",
-  "thursday"]` rather than the encoded `18` Automox stores. Weeks of the month
-  remain encoded-only, because that bit order is not confirmed and a wrong guess
-  would silently move when patching runs.
+  "thursday"]` rather than the encoded `18` Automox stores.
+
+  Weeks of the month remain encoded-only, and a controlled experiment now shows
+  why: the intuitive reading — bit 2 means "the second Tuesday" — matched only
+  eight of twelve live cases. Automox partitions the month into calendar weeks
+  rather than counting occurrences of a weekday, so a friendly form built on the
+  obvious interpretation would have silently moved when patching ran.
 
   Policy names must be unique within an organization. Automox returns no
   identifier when a policy is created, so the provider locates the new policy by
