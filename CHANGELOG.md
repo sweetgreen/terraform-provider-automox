@@ -20,6 +20,19 @@
 
 ### Added
 
+- Data sources `automox_events`, `automox_worklets`, and `automox_worklet`.
+  Events can be filtered by type, device, or policy; worklets search the Automox
+  Worklet Catalogue by text, OS family, or category.
+
+  The event log has no natural end — it runs to tens of thousands of records —
+  so the read is bounded. It returns the most recent `max_results` events,
+  default 250, and sets `truncated` when more matched than were returned, rather
+  than handing back a prefix that looks like the whole log.
+
+  An event's free-form `data` object is not exposed. What it holds depends on the
+  event type: device addresses on patch events, employee names on user events,
+  and nothing bounds what a future event type adds.
+
 - Data sources `automox_devices`, `automox_device`, and
   `automox_device_packages`, for reading the fleet. Devices can be filtered by
   server group, OS family, connection state, and tag; `automox_device_packages`

@@ -69,6 +69,17 @@ type ListOptions struct {
 	// everything in one response: /policystats, /global/api_keys,
 	// /servers/{id}/queues, /accounts/{uuid}/rbac-roles.
 	Unpaged bool
+
+	// MaxResults stops the walk once this many records have been collected.
+	// Zero means no cap and every page is read.
+	//
+	// This exists for collections with no natural end. /events is an audit log
+	// running to hundreds of pages and tens of thousands of records; walking it
+	// whole would take minutes and put all of it into Terraform state. A caller
+	// that sets this is choosing a bounded read, and Truncated tells it whether
+	// the bound was actually hit -- silently returning a prefix would be
+	// indistinguishable from a collection that small.
+	MaxResults int
 }
 
 // metadataEnvelope is the {data, metadata} shape.
@@ -95,10 +106,25 @@ type resultsEnvelope struct {
 // that error, because a data source returning half a fleet looks identical to a
 // fleet that shrank, and Terraform would act on the difference.
 func (c *Client) List(ctx context.Context, opts ListOptions, out any) error {
-	records, err := c.listRaw(ctx, opts)
+	_, err := c.ListBounded(ctx, opts, out)
+	return err
+}
+
+// ListBounded is List with the MaxResults cap reported.
+//
+// truncated is true when the walk stopped because the cap was reached and the
+// collection holds more. Callers must surface that: a capped list is a prefix,
+// and treating it as the whole collection is the same failure as accepting a
+// short page.
+func (c *Client) ListBounded(ctx context.Context, opts ListOptions, out any) (truncated bool, err error) {
+	records, truncated, err := c.listRaw(ctx, opts)
 	if err != nil {
-		return err
+		return false, err
 	}
+	return truncated, c.decodeRecords(opts, records, out)
+}
+
+func (c *Client) decodeRecords(opts ListOptions, records []json.RawMessage, out any) error {
 
 	// Re-marshal the accumulated elements so callers get their own typed model
 	// without this layer needing to know it.
@@ -112,17 +138,29 @@ func (c *Client) List(ctx context.Context, opts ListOptions, out any) error {
 	return nil
 }
 
-func (c *Client) listRaw(ctx context.Context, opts ListOptions) ([]json.RawMessage, error) {
+func (c *Client) listRaw(ctx context.Context, opts ListOptions) ([]json.RawMessage, bool, error) {
 	limit := opts.Limit
 	if limit <= 0 {
 		limit = defaultPageLimit
+	}
+	// A capped walk fetches one record beyond the cap, which is what makes
+	// truncation decidable. Stopping exactly at the cap leaves a full final page
+	// ambiguous: a collection of exactly MaxResults records and one with millions
+	// look identical. The extra record settles it, and is discarded.
+	target := 0
+	if opts.MaxResults > 0 {
+		target = opts.MaxResults + 1
+		// No point requesting 250 records to keep 10, against a rate-limited API.
+		if target < limit {
+			limit = target
+		}
 	}
 
 	var all []json.RawMessage
 
 	for page := 0; ; page++ {
 		if page >= maxPages {
-			return nil, fmt.Errorf(
+			return nil, false, fmt.Errorf(
 				"automox: %s returned more than %d pages of %d records; refusing to continue "+
 					"in case the endpoint is ignoring pagination", opts.Path, maxPages, limit)
 		}
@@ -145,18 +183,25 @@ func (c *Client) listRaw(ctx context.Context, opts ListOptions) ([]json.RawMessa
 			OrgScope: opts.OrgScope,
 		})
 		if err != nil {
-			return nil, err
+			return nil, false, err
 		}
 
 		items, total, err := decodePage(opts.Envelope, opts.Path, body)
 		if err != nil {
-			return nil, err
+			return nil, false, err
 		}
 
 		all = append(all, items...)
 
+		// Enough to decide. Anything beyond the cap means the collection is longer
+		// than the caller asked for, so the surplus is trimmed and reported rather
+		// than returned as if it were the whole thing.
+		if target > 0 && len(all) >= target {
+			return all[:opts.MaxResults], true, nil
+		}
+
 		if opts.Unpaged {
-			return all, nil
+			return capped(all, opts.MaxResults), false, nil
 		}
 
 		// Termination, in order of reliability:
@@ -168,10 +213,10 @@ func (c *Client) listRaw(ctx context.Context, opts ListOptions) ([]json.RawMessa
 		//    carry one; it guards against an endpoint that keeps echoing a full
 		//    page instead of ending.
 		if len(items) == 0 || len(items) < limit {
-			return all, nil
+			return capped(all, opts.MaxResults), false, nil
 		}
 		if total > 0 && len(all) >= total {
-			return all, nil
+			return capped(all, opts.MaxResults), false, nil
 		}
 	}
 }
@@ -234,4 +279,13 @@ func decodeItems(raw json.RawMessage, path string) ([]json.RawMessage, error) {
 		return nil, fmt.Errorf("automox: the collection returned by %s was not an array: %w", path, err)
 	}
 	return items, nil
+}
+
+// capped trims a completed walk to the requested maximum. Reaching a natural end
+// under the cap is not truncation, so only the length is adjusted.
+func capped(all []json.RawMessage, max int) []json.RawMessage {
+	if max > 0 && len(all) > max {
+		return all[:max]
+	}
+	return all
 }

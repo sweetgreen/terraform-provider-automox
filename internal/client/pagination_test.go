@@ -340,3 +340,96 @@ func TestUnitList_PreservesCallerQueryAcrossPages(t *testing.T) {
 		}
 	}
 }
+
+// TestListBoundedCapsResults covers MaxResults, which exists so an audit log
+// with no natural end cannot be walked in full into Terraform state.
+func TestListBoundedCapsResults(t *testing.T) {
+	cases := []struct {
+		name          string
+		total         int
+		max           int
+		wantLen       int
+		wantTruncated bool
+		wantPages     int
+	}{
+		// The cap is below the collection, so the walk stops early and says so.
+		{name: "caps and reports truncation", total: 1000, max: 10, wantLen: 10, wantTruncated: true, wantPages: 1},
+		// A cap larger than the collection must not claim truncation: the caller
+		// has the whole thing, and a false positive would send them chasing pages
+		// that do not exist.
+		{name: "cap above total is not truncated", total: 5, max: 100, wantLen: 5, wantTruncated: false},
+		// Exactly the collection size. The page comes back short, which proves the
+		// end was reached rather than merely the cap.
+		{name: "cap equal to total is not truncated", total: 30, max: 30, wantLen: 30, wantTruncated: false},
+		// Zero keeps the old behaviour: no cap at all.
+		{name: "zero means unbounded", total: 600, max: 0, wantLen: 600, wantTruncated: false},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c, pages := pagedServer(t, EnvelopeArray, tc.total)
+
+			var got []item
+			truncated, err := c.ListBounded(context.Background(), ListOptions{
+				Path: "/things", OrgScope: OrgScopeQuery, Envelope: EnvelopeArray,
+				MaxResults: tc.max,
+			}, &got)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if len(got) != tc.wantLen {
+				t.Errorf("got %d records, want %d", len(got), tc.wantLen)
+			}
+			if truncated != tc.wantTruncated {
+				t.Errorf("truncated = %v, want %v", truncated, tc.wantTruncated)
+			}
+			// Records must still be the first N in order, not an arbitrary subset.
+			for i := range got {
+				if got[i].ID != i {
+					t.Fatalf("record %d has ID %d; the cap reordered or skipped records", i, got[i].ID)
+				}
+			}
+			if tc.wantPages > 0 && len(*pages) != tc.wantPages {
+				t.Errorf("fetched %d pages, want %d; a cap must not read pages it will discard",
+					len(*pages), tc.wantPages)
+			}
+		})
+	}
+}
+
+// TestListBoundedShrinksPageSize asserts the cap also reduces the page size, so
+// a bounded read does not transfer 250 records to keep 10 against a rate-limited
+// API.
+func TestListBoundedShrinksPageSize(t *testing.T) {
+	var limits []int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+		limits = append(limits, limit)
+		items := make([]item, limit)
+		body, _ := json.Marshal(items)
+		w.Write(body)
+	}))
+	t.Cleanup(srv.Close)
+
+	c, err := New(Options{
+		BaseURL: srv.URL, APIKey: "k", OrganizationID: 120547,
+		HTTPClient: srv.Client(), Retry: &RetryPolicy{MaxAttempts: 1},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var got []item
+	if _, err := c.ListBounded(context.Background(), ListOptions{
+		Path: "/things", OrgScope: OrgScopeQuery, Envelope: EnvelopeArray, MaxResults: 7,
+	}, &got); err != nil {
+		t.Fatal(err)
+	}
+
+	// 8, not 7: the walk deliberately asks for one record beyond the cap so it
+	// can tell a collection of exactly 7 from one with more.
+	if len(limits) != 1 || limits[0] != 8 {
+		t.Errorf("requested page limits %v, want a single request for 8", limits)
+	}
+}

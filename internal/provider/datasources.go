@@ -15,10 +15,13 @@ func dataSources() []func() datasource.DataSource {
 		datasources.NewDevice,
 		datasources.NewDevicePackages,
 		datasources.NewDevices,
+		datasources.NewEvents,
 		datasources.NewOrganizations,
 		datasources.NewPolicies,
 		datasources.NewPolicyStats,
 		datasources.NewServerGroups,
+		datasources.NewWorklet,
+		datasources.NewWorklets,
 
 		// Add automox provider data sources here
 	}
