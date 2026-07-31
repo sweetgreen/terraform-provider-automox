@@ -20,6 +20,19 @@
 
 ### Added
 
+- Data sources `automox_scheduled_windows` and `automox_data_extracts`.
+
+  Maintenance windows are served by a different system from the rest of the API:
+  the collection is POST-only, returns a fourth envelope shape, and takes its
+  paging from the request body — query parameters are accepted and ignored. The
+  provider handles that, and stops with an explicit error if the endpoint ever
+  stops advancing rather than returning duplicated or partial results. No filter
+  arguments are offered because the endpoint accepts filters and ignores them.
+
+  Data extracts report status and the period each covers. The download URL is
+  deliberately not exposed: for a completed extract it is a pre-signed link to an
+  export of the organization's data, and state is plaintext.
+
 - Data sources `automox_needs_attention_report` and `automox_prepatch_report`:
   Automox's compliance and pre-patch views, with severity breakdowns, the devices
   involved, and — for each device — the policies it is failing or the patches

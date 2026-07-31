@@ -14,6 +14,7 @@ func dataSources() []func() datasource.DataSource {
 	return []func() datasource.DataSource{
 		datasources.NewDevice,
 		datasources.NewDevicePackages,
+		datasources.NewDataExtracts,
 		datasources.NewDevices,
 		datasources.NewEvents,
 		datasources.NewNeedsAttentionReport,
@@ -21,6 +22,7 @@ func dataSources() []func() datasource.DataSource {
 		datasources.NewPolicies,
 		datasources.NewPolicyStats,
 		datasources.NewPrepatchReport,
+		datasources.NewScheduledWindows,
 		datasources.NewServerGroups,
 		datasources.NewWorklet,
 		datasources.NewWorklets,
