@@ -20,6 +20,12 @@
 
 ### Added
 
+- Documentation for every resource and data source, generated from the provider
+  schemas and published to `registry.sweetgreen.engineering`, with runnable
+  examples for the provider, each resource, and the common data sources.
+  Continuous integration regenerates the docs and fails on any difference, so
+  what practitioners read cannot drift from what the provider accepts.
+
 - Data sources `automox_scheduled_windows` and `automox_data_extracts`.
 
   Maintenance windows are served by a different system from the rest of the API:

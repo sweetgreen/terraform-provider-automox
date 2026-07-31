@@ -34,8 +34,9 @@ vulncheck:
 	$(GO) run golang.org/x/vuln/cmd/govulncheck@latest ./...
 
 .PHONY: docs
-docs:
-	$(GO) generate ./...
+docs:               ## Regenerate docs/ from the provider schemas and examples/.
+	terraform fmt -recursive examples/
+	$(GO) run github.com/hashicorp/terraform-plugin-docs/cmd/tfplugindocs generate --provider-name automox
 
 .PHONY: check
 check: build vet test   ## What CI runs on a pull request.
