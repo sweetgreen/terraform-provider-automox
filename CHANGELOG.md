@@ -20,6 +20,22 @@
 
 ### Added
 
+- Data sources `automox_organizations`, `automox_server_groups`,
+  `automox_policies`, and `automox_policy_stats`, for reading an organization
+  without managing it. Server groups and policies can be filtered by exact name,
+  and policies by kind; a filter that matches nothing fails and says so rather
+  than returning an empty list to index into.
+
+  Two things are deliberately not exposed. Automox returns a live organization
+  access key from its organizations endpoint, and policy listings carry worklet
+  source code — every data source attribute is written to Terraform state in
+  plaintext, so neither is read at all. Marking them sensitive would still put
+  them in state.
+
+  `automox_server_groups` reports which group is the organization default.
+  Automox marks it by making the group its own parent rather than with a flag,
+  so the provider derives it for you.
+
 - Release pipeline. Tagging `vX.Y.Z` builds, signs, and publishes a release that
   `registry.sweetgreen.engineering` can serve, for linux, macOS, and Windows on
   amd64 and arm64. Signing material is read from AWS SSM using the runner's own
