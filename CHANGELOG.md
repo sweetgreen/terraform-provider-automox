@@ -18,6 +18,20 @@
   embeds 24 modules and none is from that tree, so the exposure is limited to CI
   runners executing acceptance tests, not to anyone using the provider.
 
+### Fixed
+
+- A rate-limited request could stall an apply indefinitely. `Retry-After` comes
+  from the server and bypassed the provider's own backoff ceiling, so a header of
+  `86400` would have slept for a day — three times over before giving up — with
+  Terraform printing nothing meanwhile, which is indistinguishable from a hang.
+  Automox's documented one-minute penalty is still honoured; anything beyond five
+  minutes is now reported instead of waited out.
+
+- Acceptance tests could skip silently when the write-scope probe failed for a
+  reason unrelated to permissions. A transient outage during the probe would have
+  turned every write test into a no-op while the suite reported success. Only a
+  refused write now counts as a read-only credential; anything else fails.
+
 ### Added
 
 - A static guard asserting every acceptance test refuses to run without

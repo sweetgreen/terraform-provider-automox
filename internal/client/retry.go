@@ -30,6 +30,19 @@ type RetryPolicy struct {
 	// burns another request against the same limit.
 	RateLimitBackoff time.Duration
 
+	// MaxRetryAfter caps how long a server-supplied Retry-After is honoured.
+	//
+	// MaxBackoff bounds only the local exponential backoff; Retry-After comes
+	// from the server and bypassed it entirely, so a header of 86400 would have
+	// parked a Terraform apply for a day with no output. Terraform gives no
+	// indication it is sleeping, so that is indistinguishable from a hang.
+	//
+	// Beyond this ceiling the request is not retried at all. Waiting two minutes
+	// when the server asked for a day would just fail again, and reporting the
+	// rate limit lets the practitioner decide when to re-run. Zero disables the
+	// ceiling.
+	MaxRetryAfter time.Duration
+
 	// sleep is injectable so tests do not spend real time.
 	sleep func(context.Context, time.Duration) error
 }
@@ -41,6 +54,9 @@ func DefaultRetryPolicy() RetryPolicy {
 		InitialBackoff:   time.Second,
 		MaxBackoff:       30 * time.Second,
 		RateLimitBackoff: 60 * time.Second,
+		// Above the 60s rate-limit penalty, so a legitimate Automox 429 is still
+		// waited out, but far below anything that would look like a hung apply.
+		MaxRetryAfter: 5 * time.Minute,
 	}
 }
 
@@ -64,6 +80,16 @@ func (p RetryPolicy) Do(ctx context.Context, attempt func() ([]byte, error)) ([]
 	for i := 0; i < maxAttempts; i++ {
 		if i > 0 {
 			delay := p.delayFor(lastErr, backoff)
+
+			// A server asking for longer than the ceiling is surfaced rather than
+			// slept through. This only triggers on a server-supplied Retry-After;
+			// local backoff is already bounded by MaxBackoff.
+			if p.MaxRetryAfter > 0 && delay > p.MaxRetryAfter {
+				return nil, fmt.Errorf(
+					"%w (server asked to wait %s, longer than the %s this provider will "+
+						"wait; not retried)", lastErr, delay.Round(time.Second), p.MaxRetryAfter)
+			}
+
 			if err := p.doSleep(ctx, delay); err != nil {
 				// Context cancelled mid-backoff. Report the original failure with
 				// the reason we stopped, rather than a bare context error that

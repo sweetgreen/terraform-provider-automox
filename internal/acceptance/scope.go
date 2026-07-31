@@ -16,8 +16,10 @@ package acceptance
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/rand"
+	"net/http"
 	"os"
 	"strconv"
 	"strings"
@@ -103,7 +105,16 @@ func RequireWriteScope(t *testing.T) {
 		writeScopeResult = probeWriteScope()
 	})
 
-	if writeScopeResult != nil {
+	if writeScopeResult == nil {
+		return
+	}
+
+	// Only a refused write means a read-only credential. Anything else -- a 503,
+	// a timeout, a probe broken by a refactor -- is an unexplained failure, and
+	// skipping on it would turn every write test into a silent no-op while the
+	// suite reported green. That is the same false-confidence FR-25 exists to
+	// prevent, arrived at from the other direction.
+	if IsReadOnlyCredential(writeScopeResult) {
 		t.Skipf(
 			"skipping: the configured Automox credential cannot write.\n"+
 				"  reason: %v\n"+
@@ -112,6 +123,33 @@ func RequireWriteScope(t *testing.T) {
 				"  an existing one.",
 			writeScopeResult)
 	}
+
+	t.Fatalf(
+		"the write-scope probe failed for a reason other than permissions, so whether this\n"+
+			"  credential can write is unknown.\n"+
+			"  reason: %v\n"+
+			"  This is deliberately a failure rather than a skip: skipping here would quietly\n"+
+			"  turn every write test into a no-op while the suite reported success.",
+		writeScopeResult)
+}
+
+// IsReadOnlyCredential reports whether the probe failed because Automox refused
+// the write, as opposed to failing for any other reason.
+//
+// Automox validates a request body before checking authorization, so a probe
+// that sent an incomplete body would be answered 400 and never reach the
+// permission check. The probe therefore sends a complete, valid server group;
+// a 403 from it is genuine evidence about scope, and nothing else is.
+func IsReadOnlyCredential(err error) bool {
+	if err == nil {
+		return false
+	}
+	var apiErr *client.APIError
+	if !errors.As(err, &apiErr) {
+		return false
+	}
+	return apiErr.StatusCode == http.StatusForbidden ||
+		apiErr.StatusCode == http.StatusUnauthorized
 }
 
 func probeWriteScope() error {
