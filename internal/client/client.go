@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -113,6 +114,14 @@ type Request struct {
 	// Body is marshalled to JSON when non-nil.
 	Body any
 
+	// Upload sends a multipart/form-data body instead of JSON. Automox accepts
+	// worklet attachments only this way -- a JSON body with the same content is
+	// rejected with "The file field is required."
+	//
+	// Body and Upload are mutually exclusive; setting both is a programming error
+	// and fails the request rather than silently preferring one.
+	Upload *Upload
+
 	// OrgScope selects how this endpoint expects the organization to be supplied.
 	OrgScope OrgScope
 }
@@ -157,21 +166,73 @@ func (c *Client) doRaw(ctx context.Context, req Request) ([]byte, error) {
 		return nil, err
 	}
 
+	if req.Body != nil && req.Upload != nil {
+		return nil, fmt.Errorf(
+			"automox: %s %s sets both Body and Upload; this is a bug in the provider",
+			req.Method, req.Path)
+	}
+
 	var payload []byte
-	if req.Body != nil {
+	contentType := ""
+
+	switch {
+	case req.Upload != nil:
+		payload, contentType, err = encodeMultipart(*req.Upload)
+		if err != nil {
+			return nil, fmt.Errorf("automox: encoding upload for %s %s: %w",
+				req.Method, req.Path, err)
+		}
+	case req.Body != nil:
 		payload, err = json.Marshal(req.Body)
 		if err != nil {
 			return nil, fmt.Errorf("automox: encoding request body for %s %s: %w",
 				req.Method, req.Path, err)
 		}
+		contentType = "application/json"
 	}
 
 	return c.retry.Do(ctx, func() ([]byte, error) {
-		return c.attempt(ctx, req.Method, endpoint, payload)
+		return c.attempt(ctx, req.Method, endpoint, payload, contentType)
 	})
 }
 
-func (c *Client) attempt(ctx context.Context, method, endpoint string, payload []byte) ([]byte, error) {
+// Upload is a single file sent as multipart/form-data.
+type Upload struct {
+	// FieldName is the form field. Automox requires "file".
+	FieldName string
+	Filename  string
+	Content   []byte
+}
+
+// encodeMultipart builds the body in full rather than streaming it.
+//
+// The retry layer replays the payload on a 429 or 503, which a streaming reader
+// could not do -- it would already be drained, and the retry would upload an
+// empty file while reporting success.
+func encodeMultipart(up Upload) ([]byte, string, error) {
+	field := up.FieldName
+	if field == "" {
+		field = "file"
+	}
+
+	var buf bytes.Buffer
+	w := multipart.NewWriter(&buf)
+
+	part, err := w.CreateFormFile(field, up.Filename)
+	if err != nil {
+		return nil, "", err
+	}
+	if _, err := part.Write(up.Content); err != nil {
+		return nil, "", err
+	}
+	if err := w.Close(); err != nil {
+		return nil, "", err
+	}
+
+	return buf.Bytes(), w.FormDataContentType(), nil
+}
+
+func (c *Client) attempt(ctx context.Context, method, endpoint string, payload []byte, contentType string) ([]byte, error) {
 	var reader io.Reader
 	if payload != nil {
 		reader = bytes.NewReader(payload)
@@ -186,8 +247,8 @@ func (c *Client) attempt(ctx context.Context, method, endpoint string, payload [
 	// which would leak it into access logs and error messages.
 	httpReq.Header.Set("Authorization", "Bearer "+c.apiKey)
 	httpReq.Header.Set("Accept", "application/json")
-	if payload != nil {
-		httpReq.Header.Set("Content-Type", "application/json")
+	if contentType != "" {
+		httpReq.Header.Set("Content-Type", contentType)
 	}
 
 	resp, err := c.httpClient.Do(httpReq)

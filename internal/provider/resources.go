@@ -4,6 +4,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 
 	"github.com/sweetgreen/terraform-provider-automox/internal/services/resources/policy"
+	"github.com/sweetgreen/terraform-provider-automox/internal/services/resources/policy_file"
 	"github.com/sweetgreen/terraform-provider-automox/internal/services/resources/scheduled_window"
 	"github.com/sweetgreen/terraform-provider-automox/internal/services/resources/server_group"
 )
@@ -15,6 +16,7 @@ import (
 func resources() []func() resource.Resource {
 	return []func() resource.Resource{
 		policy.New,
+		policy_file.New,
 		scheduled_window.New,
 		server_group.New,
 

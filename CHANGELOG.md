@@ -20,6 +20,16 @@
 
 ### Added
 
+- `automox_policy_file` resource for the files a worklet needs at run time — an
+  installer, or a script it calls.
+
+  Automox provides no way to read a file's contents back, so Terraform records
+  the hash of what it uploaded. Changing `content` replaces the file; a change
+  made in the Automox console is invisible to Terraform, and the documentation
+  says so rather than implying a fidelity the API cannot support. Every attribute
+  replaces the file, because Automox rejects a second upload under a name already
+  present — an update is a delete and an upload either way.
+
 - Documentation for every resource and data source, generated from the provider
   schemas and published to `registry.sweetgreen.engineering`, with runnable
   examples for the provider, each resource, and the common data sources.
