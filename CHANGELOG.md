@@ -20,6 +20,16 @@
 
 ### Added
 
+- Data sources `automox_needs_attention_report` and `automox_prepatch_report`:
+  Automox's compliance and pre-patch views, with severity breakdowns, the devices
+  involved, and — for each device — the policies it is failing or the patches
+  waiting for it, including their CVEs.
+
+  These describe the fleet at a moment rather than configuration, so referring to
+  one from a resource argument makes that resource change whenever the fleet
+  does. The prepatch report is the largest read the provider offers, around a
+  megabyte for a fleet of 1,500, and all of it is written to Terraform state.
+
 - Data sources `automox_events`, `automox_worklets`, and `automox_worklet`.
   Events can be filtered by type, device, or policy; worklets search the Automox
   Worklet Catalogue by text, OS family, or category.
