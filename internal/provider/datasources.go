@@ -12,6 +12,9 @@ import (
 // the list stays a single obvious place to look.
 func dataSources() []func() datasource.DataSource {
 	return []func() datasource.DataSource{
+		datasources.NewDevice,
+		datasources.NewDevicePackages,
+		datasources.NewDevices,
 		datasources.NewOrganizations,
 		datasources.NewPolicies,
 		datasources.NewPolicyStats,

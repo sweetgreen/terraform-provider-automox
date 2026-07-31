@@ -20,6 +20,22 @@
 
 ### Added
 
+- Data sources `automox_devices`, `automox_device`, and
+  `automox_device_packages`, for reading the fleet. Devices can be filtered by
+  server group, OS family, connection state, and tag; `automox_device_packages`
+  reports installed software and outstanding patches with their CVEs and CVSS
+  scores.
+
+  These read real endpoints, so what they expose is limited on purpose. The
+  logged-in user, serial number, service tag, private addresses, and the hardware
+  `detail` object together identify whose laptop a device is, and Terraform state
+  is plaintext — so none of them are read. Attributes policy `device_filters` can
+  match on, including `ip_addrs`, `organizational_unit`, and `tags`, are
+  included, because configuration acts on those.
+
+  Filter by `group_id` where you can: it is applied by the API, so it reduces how
+  much is fetched rather than just what is returned.
+
 - Data sources `automox_organizations`, `automox_server_groups`,
   `automox_policies`, and `automox_policy_stats`, for reading an organization
   without managing it. Server groups and policies can be filtered by exact name,
