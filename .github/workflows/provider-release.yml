@@ -1,0 +1,107 @@
+name: provider | Terraform Provider Release
+
+# Publishes a release that registry.sweetgreen.engineering can serve.
+#
+# Three things here are contracts with the registry rather than preferences, and
+# breaking any of them makes the provider silently unresolvable:
+#
+#   1. Tags are plain `vX.Y.Z`. The versions handler fetches
+#      `/releases/tags/v${version}`, so a prefixed tag scheme resolves to nothing.
+#   2. The GitHub release must NOT be flagged pre-release. The handler filters
+#      `.filter(release => !release.prerelease)`, so a flagged release disappears
+#      from the index even though it exists. A `-alpha` version *string* is fine;
+#      the flag is what breaks it.
+#   3. Signing uses the one keypair the registry publishes to every provider it
+#      serves. `use-ssm-signing-keys` reads it from SSM rather than from a copy
+#      in this repository's secrets, so there is no per-repo key to drift.
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      release_version:
+        description: 'Tag to publish. Must already exist as a repo release and be a semver such as v0.1.0.'
+        required: true
+        default: 'v0.0.0-alpha'
+
+permissions:
+  contents: write
+  id-token: write
+  packages: read
+  statuses: write
+
+jobs:
+  pre-release-checks:
+    name: '🚦 Pre-release Validation'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@58077d3c7e43986b6b15fba718e8ea69e387dfcc # v2.15.1
+        with:
+          egress-policy: audit
+
+      - name: Check out code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.inputs.release_version || github.ref }}
+
+      - name: Set up Go
+        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
+        with:
+          go-version-file: 'go.mod'
+
+      - name: Verify go.mod and go.sum are tidy
+        run: |
+          go mod tidy
+          if [ -n "$(git status --porcelain go.mod go.sum)" ]; then
+            echo "::error::go mod tidy produced changes. Commit them before releasing."
+            git --no-pager diff go.mod go.sum
+            exit 1
+          fi
+
+      - name: Build
+        run: go build -v ./...
+
+      # No network, no credentials. Acceptance tests are excluded by design: they
+      # need a live Automox organization and must never gate a release.
+      - name: Unit tests
+        run: go test ./... -count=1
+
+      - name: Vet
+        run: go vet ./...
+
+      # The release workflow reads release notes out of CHANGELOG.md with sed. A
+      # missing or unparseable file fails the release late, after the tag exists,
+      # so it is checked here while that is still cheap to fix.
+      - name: Verify CHANGELOG has an entry for this version
+        run: |
+          VERSION="${{ github.event.inputs.release_version || github.ref_name }}"
+          VERSION="${VERSION#v}"
+          if [ ! -f CHANGELOG.md ]; then
+            echo "::error::CHANGELOG.md is missing; the release notes step requires it."
+            exit 1
+          fi
+          if ! grep -qE "^## +${VERSION}( |$)" CHANGELOG.md; then
+            echo "::error::CHANGELOG.md has no '## ${VERSION}' section."
+            echo "Sections present:"
+            grep -E '^## ' CHANGELOG.md || true
+            exit 1
+          fi
+
+  terraform-provider-release:
+    name: '📦 Terraform Provider Release'
+    needs: [pre-release-checks]
+    uses: ./.github/workflows/tf-registry-goreleaser.yml
+    with:
+      goreleaser-release-args: --verbose --parallelism 1 --timeout 120m0s
+      release-notes: false
+      setup-go-version-file: 'go.mod'
+      git-ref: ${{ github.event.inputs.release_version || github.ref }}
+      # Signing material comes from SSM via the runner's instance credentials, so
+      # this repository holds no private key. Requires the parameters added by
+      # sweetgreen/terraform-infrastructure#1585.
+      use-ssm-signing-keys: true

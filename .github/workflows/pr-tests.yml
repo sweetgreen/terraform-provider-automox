@@ -1,0 +1,76 @@
+name: PR Tests
+
+# Offline only. Acceptance tests are deliberately absent from CI: they create
+# real objects in a live Automox organization, and there is no sandbox tenant.
+# `internal/acceptance` refuses to run without AUTOMOX_ACC_ALLOW_PRODUCTION_ORG,
+# so they are opt-in from a developer's machine, not something CI can trip into.
+
+permissions:
+  contents: read
+
+on:
+  pull_request:
+    paths:
+      - '**/*.go'
+      - 'go.mod'
+      - 'go.sum'
+      - '.github/workflows/pr-tests.yml'
+  push:
+    branches:
+      - main
+
+jobs:
+  test:
+    name: '🧪 Build, vet and unit tests'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 20
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@58077d3c7e43986b6b15fba718e8ea69e387dfcc # v2.15.1
+        with:
+          egress-policy: audit
+
+      - name: Check out code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up Go
+        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
+        with:
+          go-version-file: 'go.mod'
+
+      - name: Verify go.mod and go.sum are tidy
+        run: |
+          go mod tidy
+          if [ -n "$(git status --porcelain go.mod go.sum)" ]; then
+            echo "::error::go mod tidy produced changes. Run it locally and commit."
+            git --no-pager diff go.mod go.sum
+            exit 1
+          fi
+
+      - name: Check formatting
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "::error::These files are not gofmt-clean:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: Build
+        run: go build -v ./...
+
+      - name: Vet
+        run: go vet ./...
+
+      # -count=1 defeats the test cache so a green run means the tests actually
+      # executed. TF_ACC is unset, so every TestAcc skips.
+      - name: Unit tests
+        run: go test ./... -count=1
+
+      # The provider signs its own releases and ships to an internal registry, so
+      # a reachable advisory in a dependency reaches every consumer. Failing here
+      # is cheaper than finding out at release time.
+      - name: Vulnerability scan
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          "$(go env GOPATH)/bin/govulncheck" ./...

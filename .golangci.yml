@@ -1,0 +1,27 @@
+version: "2"
+
+run:
+  timeout: 10m
+
+linters:
+  default: standard
+  enable:
+    # Every non-2xx from Automox must surface. An ignored error is the exact
+    # failure mode the provider is built to avoid.
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    # Errors carry API status and context; wrapping preserves it through the
+    # layers so IsNotFound and IsGone still work on a returned error.
+    - errorlint
+    - misspell
+
+formatters:
+  enable:
+    - gofmt
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0

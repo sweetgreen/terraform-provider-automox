@@ -20,6 +20,14 @@
 
 ### Added
 
+- Release pipeline. Tagging `vX.Y.Z` builds, signs, and publishes a release that
+  `registry.sweetgreen.engineering` can serve, for linux, macOS, and Windows on
+  amd64 and arm64. Signing material is read from AWS SSM using the runner's own
+  instance credentials, so no private key is copied into this repository.
+- Continuous integration on pull requests: build, vet, gofmt, unit tests, a
+  `go mod tidy` check, and a vulnerability scan. Acceptance tests are excluded
+  from CI by design — they create real objects in a live Automox organization.
+
 - `automox_scheduled_window` resource for maintenance exclusion windows, with
   full create, read, update, delete, and import.
 

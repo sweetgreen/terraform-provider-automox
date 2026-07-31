@@ -1,0 +1,162 @@
+# cloned from hashicorp and modifed to support ubuntu-latest-m , which provides more disk space
+# for go build to complete successfully.
+name: provider | Terraform Registry with goreleaser
+
+permissions:
+  contents: write
+  packages: read
+  statuses: write
+
+on:
+  workflow_call:
+    inputs:
+      goreleaser-release-args:
+        description: 'goreleaser release Arguments (e.g. --skip-validate)'
+        required: false
+        type: string
+      release-notes:
+        description: 'Enable release notes handling (must have previously uploaded artifact named "release-notes" with file "release-notes.txt")'
+        required: false
+        type: boolean
+      setup-go-version:
+        description: 'setup-go Go Version'
+        required: false
+        type: string
+      setup-go-version-file:
+        description: 'setup-go File From Which To Read Go Version'
+        required: false
+        type: string
+      git-ref:
+        description: 'branch, tag or SHA to checkout'
+        required: false
+        type: string
+      use-ssm-signing-keys:
+        description: 'Fetch GPG signing keys from AWS SSM Parameter Store instead of GitHub Secrets. Requires the runner to have SSM read access.'
+        required: false
+        type: boolean
+        default: false
+    secrets:
+      gpg-private-key:
+        description: 'GPG Private Key (legacy: use use-ssm-signing-keys instead)'
+        required: false
+      gpg-private-key-passphrase:
+        description: 'GPG Private Key Passphrase (legacy: use use-ssm-signing-keys instead)'
+        required: false
+
+jobs:
+  Release:
+    runs-on: ubuntu-xlarge # using sweetgreen self-hosted runner for more disk space
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ inputs.git-ref || github.ref }}
+          fetch-depth: 0
+      - name: Free up Ubuntu runner disk space
+        uses: jlumbroso/free-disk-space@54081f138730dfa15788a46383842cd2f914a1be # v1.3.1
+        with:
+          tool-cache: true
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: false  # Preserve Docker for GoReleaser
+          swap-storage: true
+      - uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
+        with:
+          go-version: ${{ inputs.setup-go-version }}
+          go-version-file: ${{ inputs.setup-go-version-file }}
+          cache: false  # Disable caching to skip the post-cleanup step. saves circa 15 minutes
+
+      # --- Path A: Fetch GPG signing keys from AWS SSM (runner instance credentials) ---
+      - name: Fetch and import GPG signing key from SSM
+        if: inputs.use-ssm-signing-keys
+        id: ssm_gpg_import
+        run: |
+          GPG_PRIVATE_KEY=$(aws ssm get-parameter \
+            --name "/terraform-registry-api-github-proxy/gpg-private-key" \
+            --with-decryption --query "Parameter.Value" --output text)
+          GPG_PASSPHRASE=$(aws ssm get-parameter \
+            --name "/terraform-registry-api-github-proxy/gpg-private-key-passphrase" \
+            --with-decryption --query "Parameter.Value" --output text)
+          GPG_KEY_ID=$(aws ssm get-parameter \
+            --name "/terraform-registry-api-github-proxy/gpg-key-id" \
+            --query "Parameter.Value" --output text)
+
+          # Mask sensitive values to prevent leaking in logs
+          echo "::add-mask::${GPG_PRIVATE_KEY}"
+          echo "::add-mask::${GPG_PASSPHRASE}"
+
+          # Import the GPG key
+          echo "${GPG_PRIVATE_KEY}" | gpg --batch --import
+
+          FINGERPRINT=$(gpg --list-keys --with-colons "${GPG_KEY_ID}" | awk -F: '/^fpr:/{print $10; exit}')
+
+          # Preset passphrase in GPG agent for batch signing (required for goreleaser)
+          KEYGRIP=$(gpg --batch --with-colons --with-keygrip --list-secret-keys "${GPG_KEY_ID}" | awk -F: '/^grp:/{print $10; exit}')
+          HEX_PASSPHRASE=$(echo -n "${GPG_PASSPHRASE}" | xxd -p -c 256 | tr -d '\n' | tr 'a-f' 'A-F')
+          gpg-connect-agent "PRESET_PASSPHRASE ${KEYGRIP} -1 ${HEX_PASSPHRASE}" /bye
+
+          echo "fingerprint=${FINGERPRINT}" >> "$GITHUB_OUTPUT"
+          echo "keyid=${GPG_KEY_ID}" >> "$GITHUB_OUTPUT"
+
+          gpg --armor --export "${FINGERPRINT}" > gpg-public-key.asc
+          echo "GPG Key ID: ${GPG_KEY_ID}"
+          echo "GPG Fingerprint: ${FINGERPRINT}"
+          echo "GPG public key exported to gpg-public-key.asc"
+          echo "GPG signing keys derived from SSM parameters"
+
+      # --- Path B: Legacy - Import GPG key from GitHub Secrets ---
+      - name: Import GPG key from secrets
+        if: ${{ !inputs.use-ssm-signing-keys }}
+        id: import_gpg_legacy
+        uses: crazy-max/ghaction-import-gpg@2dc316deee8e90f13e1a351ab510b4d5bc0c82cd # v7.0.0
+        with:
+          gpg_private_key: ${{ secrets.gpg-private-key }}
+          passphrase: ${{ secrets.gpg-private-key-passphrase }}
+
+      - name: Export GPG public key for registry verification (legacy)
+        if: ${{ !inputs.use-ssm-signing-keys }}
+        run: |
+          gpg --armor --export "${{ steps.import_gpg_legacy.outputs.fingerprint }}" > gpg-public-key.asc
+          echo "GPG Key ID: ${{ steps.import_gpg_legacy.outputs.keyid }}"
+          echo "GPG Fingerprint: ${{ steps.import_gpg_legacy.outputs.fingerprint }}"
+          echo "GPG public key exported to gpg-public-key.asc"
+          echo ""
+          echo "To update the Terraform registry proxy SSM parameters, run:"
+          echo "  aws ssm put-parameter --name /terraform-registry-api-github-proxy/gpg-key-id --value '${{ steps.import_gpg_legacy.outputs.keyid }}' --type String --overwrite"
+          echo "  aws ssm put-parameter --name /terraform-registry-api-github-proxy/gpg-public-key --value \"\$(cat gpg-public-key.asc)\" --type SecureString --overwrite"
+
+      # --- Resolve GPG fingerprint from whichever path was used ---
+      - name: Set GPG fingerprint
+        id: gpg_fingerprint
+        run: |
+          if [ "${{ inputs.use-ssm-signing-keys }}" = "true" ]; then
+            echo "fingerprint=${{ steps.ssm_gpg_import.outputs.fingerprint }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "fingerprint=${{ steps.import_gpg_legacy.outputs.fingerprint }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - if: inputs.release-notes != true
+        name: goreleaser release (without release notes)
+        uses: goreleaser/goreleaser-action@ec59f474b9834571250b370d4735c50f8e2d1e29 # v7.0.0
+        with:
+          args: release --clean ${{ inputs.goreleaser-release-args }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GPG_FINGERPRINT: ${{ steps.gpg_fingerprint.outputs.fingerprint }}
+      - if: inputs.release-notes
+        id: release-notes-download
+        name: Release Notes Download
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-notes
+          path: /tmp
+      - if: inputs.release-notes
+        name: goreleaser release (with release notes)
+        uses: goreleaser/goreleaser-action@ec59f474b9834571250b370d4735c50f8e2d1e29 # v7.0.0
+        with:
+          args: release --release-notes ${{ steps.release-notes-download.outputs.download-path }}/release-notes.txt --clean ${{ inputs.goreleaser-release-args }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GPG_FINGERPRINT: ${{ steps.gpg_fingerprint.outputs.fingerprint }}
