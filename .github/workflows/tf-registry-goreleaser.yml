@@ -52,10 +52,22 @@ jobs:
         with:
           ref: ${{ inputs.git-ref || github.ref }}
           fetch-depth: 0
+      # tool-cache stays false. Deleting /opt/hostedtoolcache and then asking
+      # setup-go to install a toolchain works against itself: the runner user
+      # cannot recreate the directory, so the next step dies with
+      # "EACCES: permission denied, mkdir '/opt/hostedtoolcache'".
+      #
+      # It only bites when the requested Go is not already cached on the runner,
+      # which is why the other providers do not hit it -- they ask for 1.25.x and
+      # this repository's go.mod floor is 1.26.5, raised for standard library
+      # fixes in crypto/tls, crypto/x509 and net/textproto. Lowering the floor to
+      # match the runner would trade a security fix for a green pipeline.
+      #
+      # The remaining cleanups still free the bulk of the space.
       - name: Free up Ubuntu runner disk space
         uses: jlumbroso/free-disk-space@54081f138730dfa15788a46383842cd2f914a1be # v1.3.1
         with:
-          tool-cache: true
+          tool-cache: false
           android: true
           dotnet: true
           haskell: true
