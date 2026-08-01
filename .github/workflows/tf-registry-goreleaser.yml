@@ -99,6 +99,19 @@ jobs:
           echo "::add-mask::${GPG_PRIVATE_KEY}"
           echo "::add-mask::${GPG_PASSPHRASE}"
 
+          # The agent has to allow presetting before it will accept a passphrase
+          # from gpg-connect-agent. Without this it rejects PRESET_PASSPHRASE,
+          # and because nothing checks the result the failure only surfaces much
+          # later, when goreleaser signs and gpg tries to prompt a terminal that
+          # does not exist: "gpg: signing failed: Inappropriate ioctl for
+          # device". Written before the agent starts, so no restart races.
+          mkdir -p "${HOME}/.gnupg"
+          chmod 700 "${HOME}/.gnupg"
+          echo "allow-preset-passphrase" >> "${HOME}/.gnupg/gpg-agent.conf"
+          echo "pinentry-mode loopback" >> "${HOME}/.gnupg/gpg.conf"
+          gpgconf --kill gpg-agent || true
+          gpg-connect-agent /bye
+
           # Import the GPG key
           echo "${GPG_PRIVATE_KEY}" | gpg --batch --import
 
@@ -107,7 +120,22 @@ jobs:
           # Preset passphrase in GPG agent for batch signing (required for goreleaser)
           KEYGRIP=$(gpg --batch --with-colons --with-keygrip --list-secret-keys "${GPG_KEY_ID}" | awk -F: '/^grp:/{print $10; exit}')
           HEX_PASSPHRASE=$(echo -n "${GPG_PASSPHRASE}" | xxd -p -c 256 | tr -d '\n' | tr 'a-f' 'A-F')
-          gpg-connect-agent "PRESET_PASSPHRASE ${KEYGRIP} -1 ${HEX_PASSPHRASE}" /bye
+          if ! gpg-connect-agent "PRESET_PASSPHRASE ${KEYGRIP} -1 ${HEX_PASSPHRASE}" /bye | grep -q "^OK"; then
+            echo "::error::gpg-agent refused the passphrase preset. Signing would fail later with 'Inappropriate ioctl for device'."
+            exit 1
+          fi
+
+          # Prove signing works here rather than discovering it three minutes
+          # into goreleaser, after every platform has been built.
+          echo "signing probe" > "${RUNNER_TEMP}/sign-probe.txt"
+          if ! gpg --batch --yes --local-user "${FINGERPRINT}" \
+                 --output "${RUNNER_TEMP}/sign-probe.sig" \
+                 --detach-sign "${RUNNER_TEMP}/sign-probe.txt"; then
+            echo "::error::The signing key imported but cannot sign unattended. Check the passphrase parameter matches the key."
+            exit 1
+          fi
+          rm -f "${RUNNER_TEMP}/sign-probe.txt" "${RUNNER_TEMP}/sign-probe.sig"
+          echo "Unattended signing verified."
 
           echo "fingerprint=${FINGERPRINT}" >> "$GITHUB_OUTPUT"
           echo "keyid=${GPG_KEY_ID}" >> "$GITHUB_OUTPUT"
