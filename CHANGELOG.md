@@ -9,12 +9,11 @@
   currently holds with the managed attributes applied on top, so anything the
   schema does not know about is carried through untouched.
 
-  This mattered more than the number of unmodelled settings suggests. The
-  provider models 22 configuration keys; the policies in the organization this
-  was tested against use 36 between them, and every single policy set at least
-  one the provider did not know about. Among them is the binding between a
-  worklet and its Automox secret — a worklet that loses it stops running and
-  reports a missing secret.
+  One setting is affected, and it is the one that matters most: the binding
+  between a worklet and its Automox secret, which every policy in the
+  organization this was tested against carries. A worklet that loses it stops
+  running and reports a missing secret — the device-cleanup worklet, for
+  instance, does nothing but report the absence of its API key.
 
   The loss would also have been silent. A setting the provider does not model
   cannot appear in a plan, because there is no attribute to compare, so an
