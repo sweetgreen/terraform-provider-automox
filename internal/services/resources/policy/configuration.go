@@ -59,11 +59,14 @@ func configurationSchema() schema.SingleNestedAttribute {
 			"filter_type": schema.StringAttribute{
 				Optional: true,
 				Computed: true,
-				MarkdownDescription: "`include`, `exclude`, or `severity`.\n\n" +
+				MarkdownDescription: "`all`, `include`, `exclude`, or `severity`.\n\n" +
 					"Automox requires this on **every** patch policy, not only when " +
-					"`patch_rule = \"filter\"` as its error message suggests.",
+					"`patch_rule = \"filter\"` as its error message suggests.\n\n" +
+					"`all` is what Automox stores for a policy whose `patch_rule` is " +
+					"`advanced`, where the selection is expressed by `advanced_filter` " +
+					"instead.",
 				Validators: []validator.String{
-					stringvalidator.OneOf("include", "exclude", "severity"),
+					stringvalidator.OneOf(FilterTypeAll, FilterTypeInclude, FilterTypeExclude, FilterTypeSeverity),
 				},
 			},
 			"filters": schema.ListAttribute{

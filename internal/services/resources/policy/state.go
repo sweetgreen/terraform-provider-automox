@@ -208,7 +208,20 @@ func flatten(ctx context.Context, api *apiPolicy, prior policyModel) (policyMode
 		model.UUID = types.StringNull()
 	}
 
-	groups, groupDiags := types.ListValueFrom(ctx, types.Int64Type, api.ServerGroups)
+	// Automox returns an explicit JSON null for a policy targeting no groups, and
+	// a nil slice becomes a null list rather than an empty one. server_groups is
+	// Required, so a null made those policies unrepresentable: importing one
+	// failed with "Must set a configuration value for the server_groups
+	// attribute" and no configuration could satisfy it, because the value Read
+	// produced was the one being rejected. Eleven of the 26 policies in org 120547
+	// are in that state. Normalising to an empty list keeps the attribute Required
+	// — a policy targeting nothing says so with `server_groups = []` rather than
+	// by omission. automox_server_group.policies already does this.
+	apiGroups := api.ServerGroups
+	if apiGroups == nil {
+		apiGroups = []int64{}
+	}
+	groups, groupDiags := types.ListValueFrom(ctx, types.Int64Type, apiGroups)
 	diags.Append(groupDiags...)
 	model.Groups = groups
 

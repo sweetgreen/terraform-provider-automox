@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.1.1 (2026-08-03)
+
+### Fixed
+
+- Existing policies can now be brought under Terraform management. Two defects
+  made most of a real organization's policies impossible to import, and neither
+  was visible until the provider was pointed at policies it had not created
+  itself. Of the 26 policies in the organization this was tested against, 16
+  could not be managed at all.
+
+  A policy that targets no server groups was unmanageable. Automox returns an
+  explicit null rather than an empty list for those, which became a null in
+  Terraform, and `server_groups` is a required attribute — so importing one
+  failed asking for a value that no configuration could supply, because the
+  rejected value came from reading the policy rather than from anything written
+  by hand. Such a policy now reads as an empty list and states it plainly, as
+  `server_groups = []`.
+
+  Patch policies using the advanced patch rule were rejected outright. Automox
+  records `filter_type = "all"` for them, and the provider accepted only
+  `include`, `exclude`, and `severity` — values inferred from policies the
+  provider had itself created, which never produce `all`. Because the attribute
+  is read back as well as written, the provider refused these policies on import
+  and not only on write.
+
 ## 0.1.0 (2026-07-31)
 
 ### Security

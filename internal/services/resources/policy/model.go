@@ -27,6 +27,21 @@ const (
 	PatchRuleAdvanced = "advanced"
 )
 
+// filter_type values.
+//
+// FilterTypeAll was missing until 2026-08-03. The first three were derived from
+// policies this provider created, and creating one never produces "all"; reading
+// the 26 policies in org 120547 does, on all 11 whose patch_rule is "advanced".
+// The provider could not represent them at all: the value round-trips through
+// the schema, so a validator that rejects it rejects the policy on import as
+// well as on write.
+const (
+	FilterTypeAll      = "all"
+	FilterTypeInclude  = "include"
+	FilterTypeExclude  = "exclude"
+	FilterTypeSeverity = "severity"
+)
+
 type policyModel struct {
 	ID     types.Int64  `tfsdk:"id"`
 	UUID   types.String `tfsdk:"uuid"`

@@ -123,9 +123,11 @@ Optional:
 - `device_filters` (Attributes List) Narrows the policy to a subset of the devices in its server groups. (see [below for nested schema](#nestedatt--configuration--device_filters))
 - `device_filters_enabled` (Boolean)
 - `evaluation_code` (String) Script deciding whether remediation is needed. Despite the vendor documentation, the API returns this on patch policies as well.
-- `filter_type` (String) `include`, `exclude`, or `severity`.
+- `filter_type` (String) `all`, `include`, `exclude`, or `severity`.
 
 Automox requires this on **every** patch policy, not only when `patch_rule = "filter"` as its error message suggests.
+
+`all` is what Automox stores for a policy whose `patch_rule` is `advanced`, where the selection is expressed by `advanced_filter` instead.
 - `filters` (List of String) Package names to include or exclude, used with `filter_type`.
 - `include_optional` (Boolean) Include optional Windows updates.
 - `install_deferral_enabled` (Boolean)
