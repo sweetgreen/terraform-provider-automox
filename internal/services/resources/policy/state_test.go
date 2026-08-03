@@ -128,10 +128,15 @@ func filterTypeAccepts(t *testing.T, value string) bool {
 // TestUnitMergeConfigurationPreservesUnmodeledKeys pins the guard against an
 // update silently dropping configuration this provider does not model.
 //
-// The schema models 22 configuration keys; the 26 policies in org 120547 set 36
-// between them, and every one of those policies sets at least one the schema does
-// not know about. `secrets` is the sharpest example: it is how a worklet binds a
-// Shared Secret, and the device-cleanup worklet exits with an error without it.
+// The schema models 43 configuration keys and the 26 policies in org 120547 set
+// 36 between them, of which exactly one is unmodeled: `secrets`, present on all
+// 26. That is how a worklet binds a Shared Secret, and the device-cleanup worklet
+// does nothing but report the absence of its apiKey without it.
+//
+// An earlier version of this comment claimed 22 modeled and 18 unmodeled. That
+// came from a regex over configuration.go which missed attributes declared on one
+// line; the fixture below still exercises several modeled keys, which is
+// deliberate — the merge must be indifferent to whether a key is modeled.
 //
 // The loss would be invisible. An unmodeled key has no attribute to diff, so it
 // cannot appear in a plan for anyone to review — the apply would simply succeed
@@ -153,11 +158,14 @@ func TestUnitMergeConfigurationPreservesUnmodeledKeys(t *testing.T) {
 
 	merged := mergeConfiguration(current, writing)
 
+	// secrets is the one genuinely unmodeled key; the rest are modeled but absent
+	// from what is being written, and must survive for the same reason.
 	for _, key := range []string{"secrets", "pending_reboot_deferral_enabled",
 		"notify_deferred_reboot_user", "is_patch_tuesday"} {
 		if _, ok := merged[key]; !ok {
-			t.Errorf("update would drop %q, which Automox holds and this provider does not "+
-				"model; the loss would not appear in any plan", key)
+			t.Errorf("update would drop %q, which Automox holds and this write does not "+
+				"carry; for an unmodeled key such as secrets the loss would not appear "+
+				"in any plan", key)
 		}
 	}
 
