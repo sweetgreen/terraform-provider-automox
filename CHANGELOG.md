@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.1.2 (2026-08-03)
+
+### Fixed
+
+- Updating a policy no longer discards the parts of its configuration this
+  provider does not model. An update now sends the configuration Automox
+  currently holds with the managed attributes applied on top, so anything the
+  schema does not know about is carried through untouched.
+
+  This mattered more than the number of unmodelled settings suggests. The
+  provider models 22 configuration keys; the policies in the organization this
+  was tested against use 36 between them, and every single policy set at least
+  one the provider did not know about. Among them is the binding between a
+  worklet and its Automox secret — a worklet that loses it stops running and
+  reports a missing secret.
+
+  The loss would also have been silent. A setting the provider does not model
+  cannot appear in a plan, because there is no attribute to compare, so an
+  update would have reported success while removing configuration nobody had
+  asked to change.
+
+  Automox does not document whether an update replaces a policy's configuration
+  or merges into it, and the only way to establish it by experiment is to make
+  the destructive call being guarded against. Sending the merged configuration
+  is correct either way.
+
+  An update that cannot first read the policy now fails rather than proceeding,
+  because proceeding means writing a configuration already known to be
+  incomplete.
+
 ## 0.1.1 (2026-08-03)
 
 ### Fixed

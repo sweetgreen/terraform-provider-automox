@@ -171,6 +171,28 @@ func (r *policyResource) Update(ctx context.Context, req resource.UpdateRequest,
 	// rename-free update step in TestAccPolicy_WorkletLifecycle.
 	body["id"] = id
 
+	// Carry through configuration keys the schema does not model, which would
+	// otherwise be dropped by this write. See mergeConfiguration for why this is
+	// necessary and why it is correct whichever way Automox treats PUT.
+	//
+	// The read is deliberately fatal rather than best-effort. Continuing without
+	// it would send a configuration known to be missing keys, and the loss would
+	// be invisible: an unmodeled key has no attribute to appear in a plan. A
+	// failed update that says so is recoverable; a successful one that quietly
+	// strips a worklet's secrets is not.
+	existing, err := r.read(ctx, id)
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Could not read the Automox policy before updating it",
+			fmt.Sprintf("Reading policy %d failed, and the update was abandoned rather than "+
+				"risk dropping configuration this provider does not model: %s", id, err),
+		)
+		return
+	}
+	if writing, ok := body["configuration"].(map[string]any); ok {
+		body["configuration"] = mergeConfiguration(existing.Configuration, writing)
+	}
+
 	if err := r.client.Do(ctx, client.Request{
 		Method:   "PUT",
 		Path:     fmt.Sprintf("/policies/%d", id),

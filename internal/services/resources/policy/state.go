@@ -104,6 +104,38 @@ func resolveScheduleMask(
 	return 0, diags
 }
 
+// mergeConfiguration overlays the configuration this provider is writing onto
+// the one Automox currently holds, so that keys the schema does not model
+// survive an update.
+//
+// The schema models 22 configuration keys. The 26 policies in org 120547 set 36
+// between them, and every one of those policies sets at least one key the schema
+// does not know about — `secrets` among them, which is how a worklet binds a
+// Shared Secret. The "Cleanup Disconnected Automox Devices" worklet exits with an
+// error without its `apiKey` secret.
+//
+// Automox does not document whether PUT replaces the configuration object or
+// merges into it, and the only way to find out by experiment is to issue the
+// destructive call being guarded against. Merging is correct either way: under
+// replacement the unmodeled keys are carried through explicitly, and under merge
+// resending their current values is a no-op. The alternative — modelling the
+// missing keys — would have to be repeated every time Automox adds one, and
+// would be silently wrong in between.
+//
+// Silence is what makes this worth guarding. An unmodeled key cannot appear in a
+// plan, because there is no attribute to diff, so dropping one would not show up
+// as a change for anyone to review.
+func mergeConfiguration(current, writing map[string]any) map[string]any {
+	merged := make(map[string]any, len(current)+len(writing))
+	for k, v := range current {
+		merged[k] = v
+	}
+	for k, v := range writing {
+		merged[k] = v
+	}
+	return merged
+}
+
 // configurationToAPI converts the configuration object into the request body,
 // sending only what the practitioner set. Optional+Computed attributes come back
 // from the API populated, so sending an unset one would write a value that was
