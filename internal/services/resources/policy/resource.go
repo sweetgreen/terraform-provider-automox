@@ -196,6 +196,22 @@ func (r *policyResource) Schema(_ context.Context, _ resource.SchemaRequest, res
 				MarkdownDescription: "When Automox expects to run this policy next. Null when the " +
 					"schedule means it will never run.",
 			},
+			"secret_bindings": schema.MapAttribute{
+				Computed:    true,
+				ElementType: types.StringType,
+				MarkdownDescription: "Automox Shared Secrets bound to this policy, as secret name " +
+					"to secret ID. A worklet reads a secret by the name it is bound under, so " +
+					"changing or removing a binding changes what that worklet can do.\n\n" +
+					"Read-only. The provider cannot create a binding, so a worklet that needs one " +
+					"must be given it in the Automox console.\n\n" +
+					"It is recorded so that a change made there is visible. Without it the binding " +
+					"is absent from state, and an attribute absent from state cannot produce a " +
+					"plan diff — such a change would be invisible rather than merely unmanaged.\n\n" +
+					"Only the name and ID are kept. The secret's value is not in the API response " +
+					"at all, and `numPolicies` and `description` are deliberately excluded: " +
+					"`numPolicies` changes whenever the same secret is bound to some other policy, " +
+					"which is not drift in this one.",
+			},
 		},
 	}
 }

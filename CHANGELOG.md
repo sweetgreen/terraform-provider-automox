@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.1.3 (2026-08-04)
+
+### Added
+
+- A policy now records which Automox Shared Secrets are bound to it, and reports
+  when that changes outside Terraform.
+
+  A worklet reads a secret by the name it is bound under, so removing a binding
+  or pointing it at a different secret changes what that worklet can do — and
+  0.1.2 made those bindings survive an update rather than be discarded, which
+  meant Terraform carried them faithfully while remaining unable to see them.
+  Nothing could be written that would notice a binding disappearing from the
+  console.
+
+  Bindings cannot be managed, because Automox offers no way to create one
+  through the API this provider uses. So this reports rather than reconciles: a
+  warning naming the policy and what changed, on the next plan or refresh.
+  Reporting is weaker than managing, and it is what is available.
+
+  Only the secret's name and identifier are recorded. The value is not part of
+  the API response at all. The count of policies sharing a secret is
+  deliberately excluded — it changes whenever that secret is bound to some other
+  policy, and a warning that fires for a change elsewhere would soon be ignored.
+
 ## 0.1.2 (2026-08-03)
 
 ### Fixed

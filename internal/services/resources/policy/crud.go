@@ -140,6 +140,11 @@ func (r *policyResource) Read(ctx context.Context, req resource.ReadRequest, res
 		return
 	}
 
+	// Report a Shared Secret binding that changed outside Terraform. The provider
+	// cannot reconcile it, so this is the only place the change can surface.
+	warnSecretBindingDrift(ctx, state.Name.ValueString(), state.SecretBindings,
+		secretBindings(fetched.Configuration), &resp.Diagnostics)
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, refreshed)...)
 }
 

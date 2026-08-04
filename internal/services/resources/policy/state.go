@@ -3,6 +3,8 @@ package policy
 import (
 	"context"
 	"fmt"
+	"sort"
+	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -294,6 +296,11 @@ func flatten(ctx context.Context, api *apiPolicy, prior policyModel) (policyMode
 	diags.Append(cfgDiags...)
 	model.Configuration = cfg
 
+	// Recorded so a binding changed in the console is visible; see secretBindings.
+	bindings, bindingDiags := types.MapValueFrom(ctx, types.StringType, secretBindings(api.Configuration))
+	diags.Append(bindingDiags...)
+	model.SecretBindings = bindings
+
 	return model, diags
 }
 
@@ -354,4 +361,89 @@ func optionalString(v *string) types.String {
 		return types.StringNull()
 	}
 	return types.StringValue(*v)
+}
+
+// secretBindings reduces the API's `secrets` object to the name and ID of each
+// Automox Shared Secret bound to a policy.
+//
+// The provider does not model `secrets` as configuration — it cannot create a
+// binding — but it records this much so that a binding changed in the console is
+// visible. An attribute absent from state cannot appear in a plan, so without
+// this the change would be invisible rather than merely unmanaged.
+//
+// numPolicies and description are dropped on purpose. numPolicies counts how
+// many policies share the secret, so binding that secret to an unrelated policy
+// would otherwise report as drift here; description is free text that does not
+// change what a worklet can do. The secret's value is never returned by the API.
+func secretBindings(cfg map[string]any) map[string]string {
+	out := map[string]string{}
+
+	raw, ok := cfg["secrets"].(map[string]any)
+	if !ok {
+		return out
+	}
+
+	for name, entry := range raw {
+		fields, ok := entry.(map[string]any)
+		if !ok {
+			// A shape the provider does not recognise is recorded by name with an
+			// empty ID rather than dropped, so the binding still shows up.
+			out[name] = ""
+			continue
+		}
+		id, _ := fields["id"].(string)
+		out[name] = id
+	}
+
+	return out
+}
+
+// warnSecretBindingDrift reports a binding that changed outside Terraform.
+//
+// This is a warning rather than a planned change because there is nothing to
+// plan: the provider cannot write bindings, so it can report the difference but
+// not reconcile it. Saying so is still worth doing — the alternative is that a
+// worklet quietly loses the secret it needs and the next run fails with a
+// missing-secret error that points nowhere near the cause.
+func warnSecretBindingDrift(ctx context.Context, policy string, prior types.Map, current map[string]string, diags *diag.Diagnostics) {
+	if prior.IsNull() || prior.IsUnknown() {
+		// Nothing recorded yet — first read, or a policy imported before this
+		// attribute existed. There is no baseline to compare against.
+		return
+	}
+
+	var before map[string]string
+	if d := prior.ElementsAs(ctx, &before, false); d.HasError() {
+		return
+	}
+
+	var changes []string
+	for name, id := range current {
+		was, had := before[name]
+		switch {
+		case !had:
+			changes = append(changes, fmt.Sprintf("%q was bound", name))
+		case was != id:
+			changes = append(changes, fmt.Sprintf("%q now points at a different secret", name))
+		}
+	}
+	for name := range before {
+		if _, still := current[name]; !still {
+			changes = append(changes, fmt.Sprintf("%q was unbound", name))
+		}
+	}
+
+	if len(changes) == 0 {
+		return
+	}
+
+	sort.Strings(changes)
+	diags.AddWarning(
+		fmt.Sprintf("Shared Secret bindings changed outside Terraform on policy %q", policy),
+		strings.Join(changes, "; ")+".\n\n"+
+			"A worklet reads a secret by the name it is bound under, so this changes what "+
+			"the policy can do. Terraform cannot reconcile it: Automox does not let a "+
+			"binding be created through the API this provider uses, so the change has to be "+
+			"made in the console. This warning exists because the alternative is silence.",
+	)
 }

@@ -6,7 +6,10 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"strings"
 	"testing"
+
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
@@ -237,5 +240,139 @@ func TestUnitUpdateMergesConfiguration(t *testing.T) {
 		t.Error("Update does not call mergeConfiguration, so an update will drop every " +
 			"configuration key this provider does not model — including the secrets a " +
 			"worklet needs — with nothing appearing in the plan")
+	}
+}
+
+// TestUnitSecretBindingsIgnoresSharedCounts pins what a binding is reduced to.
+//
+// numPolicies counts how many policies share a secret, so it changes when that
+// secret is bound to some unrelated policy. Recording it would report drift on
+// this policy for a change that did not touch it, and a warning that cries wolf
+// is worse than none. description is free text and does not change what a
+// worklet can do.
+func TestUnitSecretBindingsIgnoresSharedCounts(t *testing.T) {
+	before := secretBindings(map[string]any{"secrets": map[string]any{
+		"apiKey": map[string]any{
+			"id": "67102549-9443-4bdf-a00a-8f312ff48920", "name": "apiKey",
+			"numPolicies": float64(1), "description": "prod key",
+		},
+	}})
+	after := secretBindings(map[string]any{"secrets": map[string]any{
+		"apiKey": map[string]any{
+			"id": "67102549-9443-4bdf-a00a-8f312ff48920", "name": "apiKey",
+			"numPolicies": float64(7), "description": "prod key (shared)",
+		},
+	}})
+
+	if len(before) != 1 || before["apiKey"] != "67102549-9443-4bdf-a00a-8f312ff48920" {
+		t.Fatalf("binding not reduced to name -> id: %v", before)
+	}
+	if before["apiKey"] != after["apiKey"] {
+		t.Error("binding the same secret elsewhere changed this policy's recorded binding, " +
+			"which would report drift for a change that did not touch this policy")
+	}
+
+	if got := secretBindings(map[string]any{}); len(got) != 0 {
+		t.Errorf("a policy with no secrets should record none, got %v", got)
+	}
+}
+
+// TestUnitWarnSecretBindingDrift covers the three ways a binding can change and
+// the two cases that must stay quiet.
+func TestUnitWarnSecretBindingDrift(t *testing.T) {
+	mapOf := func(t *testing.T, m map[string]string) types.Map {
+		t.Helper()
+		v, d := types.MapValueFrom(context.Background(), types.StringType, m)
+		if d.HasError() {
+			t.Fatalf("building map: %v", d.Errors())
+		}
+		return v
+	}
+
+	cases := map[string]struct {
+		prior   types.Map
+		current map[string]string
+		warn    bool
+		expect  string
+	}{
+		"unchanged":   {mapOf(t, map[string]string{"apiKey": "a"}), map[string]string{"apiKey": "a"}, false, ""},
+		"unbound":     {mapOf(t, map[string]string{"apiKey": "a"}), map[string]string{}, true, "was unbound"},
+		"bound":       {mapOf(t, map[string]string{}), map[string]string{"apiKey": "a"}, true, "was bound"},
+		"replaced":    {mapOf(t, map[string]string{"apiKey": "a"}), map[string]string{"apiKey": "b"}, true, "different secret"},
+		"no baseline": {types.MapNull(types.StringType), map[string]string{"apiKey": "a"}, false, ""},
+		"both empty":  {mapOf(t, map[string]string{}), map[string]string{}, false, ""},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			var diags diag.Diagnostics
+			warnSecretBindingDrift(context.Background(), "a policy", tc.prior, tc.current, &diags)
+
+			if got := diags.WarningsCount(); (got > 0) != tc.warn {
+				t.Fatalf("warned=%v, want %v (%v)", got > 0, tc.warn, diags.Warnings())
+			}
+			if tc.warn && !strings.Contains(diags.Warnings()[0].Detail(), tc.expect) {
+				t.Errorf("warning does not say what changed; want %q, got %q",
+					tc.expect, diags.Warnings()[0].Detail())
+			}
+			if diags.ErrorsCount() > 0 {
+				t.Error("binding drift must not be an error: the provider cannot write bindings, " +
+					"so failing the read would leave the policy unmanageable")
+			}
+		})
+	}
+}
+
+// TestUnitReadWarnsOnSecretBindingDrift checks that Read actually calls
+// warnSecretBindingDrift.
+//
+// Same reasoning as TestUnitUpdateMergesConfiguration: the function being
+// correct is not the same as it being used. Deleting the call from Read
+// compiles cleanly, leaves every other test passing, and restores exactly the
+// silence the warning exists to break — nothing else fails, because the whole
+// point is that this drift produces no plan diff.
+func TestUnitReadWarnsOnSecretBindingDrift(t *testing.T) {
+	assertMethodCalls(t, "Read", "warnSecretBindingDrift")
+}
+
+// assertMethodCalls fails unless the named method on the resource calls the
+// named function somewhere in its body.
+func assertMethodCalls(t *testing.T, method, callee string) {
+	t.Helper()
+
+	file, err := parser.ParseFile(token.NewFileSet(), "crud.go", nil, 0)
+	if err != nil {
+		t.Fatalf("parse crud.go: %v", err)
+	}
+
+	var fn *ast.FuncDecl
+	for _, decl := range file.Decls {
+		d, ok := decl.(*ast.FuncDecl)
+		if ok && d.Name.Name == method && d.Recv != nil {
+			fn = d
+			break
+		}
+	}
+	if fn == nil {
+		t.Fatalf("no %s method in crud.go; this guard is not looking where the code is "+
+			"and would pass however broken that method was", method)
+	}
+
+	found := false
+	ast.Inspect(fn, func(n ast.Node) bool {
+		call, ok := n.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		if ident, ok := call.Fun.(*ast.Ident); ok && ident.Name == callee {
+			found = true
+			return false
+		}
+		return true
+	})
+
+	if !found {
+		t.Errorf("%s does not call %s, so the behaviour it provides is absent while every "+
+			"other test still passes", method, callee)
 	}
 }

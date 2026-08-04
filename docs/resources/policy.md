@@ -98,6 +98,13 @@ There is no named equivalent for this field. The bit order is believed to be 1-i
 - `id` (Number) Policy ID.
 - `next_remediation` (String) When Automox expects to run this policy next. Null when the schedule means it will never run.
 - `organization_id` (Number)
+- `secret_bindings` (Map of String) Automox Shared Secrets bound to this policy, as secret name to secret ID. A worklet reads a secret by the name it is bound under, so changing or removing a binding changes what that worklet can do.
+
+Read-only. The provider cannot create a binding, so a worklet that needs one must be given it in the Automox console.
+
+It is recorded so that a change made there is visible. Without it the binding is absent from state, and an attribute absent from state cannot produce a plan diff — such a change would be invisible rather than merely unmanaged.
+
+Only the name and ID are kept. The secret's value is not in the API response at all, and `numPolicies` and `description` are deliberately excluded: `numPolicies` changes whenever the same secret is bound to some other policy, which is not drift in this one.
 - `server_count` (Number) Devices this policy currently applies to.
 - `status` (String) `active` or `inactive`.
 - `uuid` (String) Policy UUID. Automox does not return one for `required_software` policies, where this stays null.

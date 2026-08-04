@@ -66,6 +66,7 @@ type policyModel struct {
 	ServerCount     types.Int64  `tfsdk:"server_count"`
 	CreateTime      types.String `tfsdk:"create_time"`
 	NextRemediation types.String `tfsdk:"next_remediation"`
+	SecretBindings  types.Map    `tfsdk:"secret_bindings"`
 }
 
 // apiPolicy is the wire shape.
