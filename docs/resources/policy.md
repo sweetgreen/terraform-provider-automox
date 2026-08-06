@@ -174,7 +174,8 @@ Required:
 
 Optional:
 
-- `op` (String)
+- `condition` (String) Comparison operation. Valid values depend on `left`; for example, `patch-source` supports `is` and `is-not`, while `display-name` supports `contains` and `does-not-contain`.
+- `op` (String, Deprecated)
 
 
 <a id="nestedatt--configuration--device_filters"></a>

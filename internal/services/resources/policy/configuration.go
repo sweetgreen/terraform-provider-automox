@@ -94,7 +94,21 @@ func configurationSchema() schema.SingleNestedAttribute {
 							MarkdownDescription: "Field to filter on: `display-name`, `severity`, " +
 								"`patch-source`, `patch-os`, `type`, or `patch-days-old`.",
 						},
-						"op":    schema.StringAttribute{Optional: true, Computed: true},
+						"condition": schema.StringAttribute{
+							Optional: true,
+							Computed: true,
+							MarkdownDescription: "Comparison operation. Valid values depend on `left`; " +
+								"for example, `patch-source` supports `is` and `is-not`, while " +
+								"`display-name` supports `contains` and `does-not-contain`.",
+						},
+						// Kept only so state and configurations written against v0.1.3 remain
+						// readable. Automox calls this field `condition`; sending `op` causes every
+						// policy update to fail validation, so new configurations must use condition.
+						"op": schema.StringAttribute{
+							Optional:           true,
+							Computed:           true,
+							DeprecationMessage: "Use condition. Automox does not accept op in advanced filters.",
+						},
 						"right": schema.StringAttribute{Required: true},
 					},
 				},

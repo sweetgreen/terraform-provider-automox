@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.4 (2026-08-06)
+
+### Fixed
+
+- Policy updates now preserve and send the `condition` field required by
+  Automox advanced patch filters. Version 0.1.3 modeled that API field as `op`,
+  so even a schedule-only update omitted every rule's required condition and
+  Automox rejected the PUT with HTTP 400. Existing v0.1.3 configurations and
+  state remain compatible through a scoped read/write alias; device-filter
+  `op` fields are unchanged.
+
 ## 0.1.3 (2026-08-04)
 
 ### Added
