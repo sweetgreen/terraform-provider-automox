@@ -160,10 +160,36 @@ func configurationToAPI(ctx context.Context, obj types.Object) (map[string]any, 
 		if diags.HasError() {
 			return nil, diags
 		}
+		if name == "advanced_filter" {
+			converted = normalizeAdvancedFilterConditions(converted)
+		}
 		out[name] = converted
 	}
 
 	return out, diags
+}
+
+// normalizeAdvancedFilterConditions translates the short-lived v0.1.3 `op`
+// attribute to Automox's wire key. Keep this at the advanced-filter boundary:
+// device filters also have a legitimate `op` field that must not be renamed.
+func normalizeAdvancedFilterConditions(raw any) any {
+	rules, ok := raw.([]any)
+	if !ok {
+		return raw
+	}
+	for _, rawRule := range rules {
+		rule, ok := rawRule.(map[string]any)
+		if !ok {
+			continue
+		}
+		if _, present := rule["condition"]; !present {
+			if legacy, present := rule["op"]; present {
+				rule["condition"] = legacy
+			}
+		}
+		delete(rule, "op")
+	}
+	return rules
 }
 
 func attrToGo(ctx context.Context, value attr.Value) (any, diag.Diagnostics) {
@@ -350,10 +376,33 @@ func configurationFromAPI(ctx context.Context, api map[string]any) (types.Object
 			values[name] = nullOf(typ)
 			continue
 		}
+		if name == "advanced_filter" {
+			raw = mirrorLegacyAdvancedFilterOp(raw)
+		}
 		values[name] = goToAttr(ctx, typ, raw)
 	}
 
 	return types.ObjectValue(attrTypes, values)
+}
+
+// mirrorLegacyAdvancedFilterOp keeps configurations and state created with
+// v0.1.3 stable after a read. The write path always removes this alias before
+// sending JSON, so Automox still receives only `condition`.
+func mirrorLegacyAdvancedFilterOp(raw any) any {
+	rules, ok := raw.([]any)
+	if !ok {
+		return raw
+	}
+	for _, rawRule := range rules {
+		rule, ok := rawRule.(map[string]any)
+		if !ok {
+			continue
+		}
+		if condition, present := rule["condition"]; present {
+			rule["op"] = condition
+		}
+	}
+	return rules
 }
 
 func optionalString(v *string) types.String {

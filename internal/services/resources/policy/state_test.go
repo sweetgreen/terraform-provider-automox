@@ -9,12 +9,85 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
+
+// TestUnitAdvancedFilterConditionRoundTrips pins the API field name used by
+// Automox. v0.1.3 modeled it as `op`, so reads discarded the live condition and
+// writes sent the wrong key. Any otherwise harmless policy update then failed
+// with "All advanced rules must contain a 'left', 'right' and 'condition'".
+func TestUnitAdvancedFilterConditionRoundTrips(t *testing.T) {
+	ctx := context.Background()
+	configurationTypes := configurationAttrTypes()
+	advancedType := configurationTypes["advanced_filter"].(types.ListType)
+	ruleType := advancedType.ElemType.(types.ObjectType)
+
+	rule, diags := types.ObjectValue(ruleType.AttrTypes, map[string]attr.Value{
+		"left":      types.StringValue("patch-source"),
+		"condition": types.StringValue("is"),
+		"op":        types.StringNull(),
+		"right":     types.StringValue("windowsupdate"),
+	})
+	if diags.HasError() {
+		t.Fatalf("construct rule: %v", diags.Errors())
+	}
+	filters, diags := types.ListValue(ruleType, []attr.Value{rule})
+	if diags.HasError() {
+		t.Fatalf("construct filter list: %v", diags.Errors())
+	}
+
+	raw, diags := attrToGo(ctx, filters)
+	if diags.HasError() {
+		t.Fatalf("convert to API: %v", diags.Errors())
+	}
+	got := raw.([]any)[0].(map[string]any)
+	if got["condition"] != "is" {
+		t.Errorf("condition = %v, want is", got["condition"])
+	}
+	if _, present := got["op"]; present {
+		t.Errorf("API rule contains deprecated op: %v", got)
+	}
+
+	read := goToAttr(ctx, ruleType, map[string]any{
+		"left": "patch-source", "condition": "is", "right": "windowsupdate",
+	}).(types.Object)
+	if got := read.Attributes()["condition"].(types.String).ValueString(); got != "is" {
+		t.Errorf("condition after read = %q, want is", got)
+	}
+	if got := read.Attributes()["op"].(types.String); !got.IsNull() {
+		t.Errorf("raw conversion unexpectedly populated compatibility op = %q", got.ValueString())
+	}
+}
+
+func TestUnitAPIRuleMirrorsLegacyOpInState(t *testing.T) {
+	raw := []any{map[string]any{
+		"left": "patch-source", "condition": "is", "right": "windowsupdate",
+	}}
+	rules := mirrorLegacyAdvancedFilterOp(raw).([]any)
+	got := rules[0].(map[string]any)
+	if got["op"] != "is" {
+		t.Errorf("legacy op = %v, want condition value is", got["op"])
+	}
+}
+
+func TestUnitLegacyAdvancedFilterOpBecomesCondition(t *testing.T) {
+	raw := []any{map[string]any{
+		"left": "patch-source", "op": "is", "right": "windowsupdate",
+	}}
+	rules := normalizeAdvancedFilterConditions(raw).([]any)
+	got := rules[0].(map[string]any)
+	if got["condition"] != "is" {
+		t.Errorf("condition = %v, want legacy op value is", got["condition"])
+	}
+	if _, present := got["op"]; present {
+		t.Errorf("API rule contains deprecated op after normalization: %v", got)
+	}
+}
 
 // TestUnitFlattenServerGroupsNeverNull pins the fix for policies that target no
 // server groups.
