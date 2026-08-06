@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.4 (2026-08-06)
+## 0.1.5 (2026-08-06)
 
 ### Fixed
 
@@ -8,6 +8,11 @@
   configuration values as `known after apply`. Refreshed state is preserved in
   the plan while genuinely apply-time values and canonical advanced-filter
   conditions retain their normal drift and unknown-value behavior.
+
+## 0.1.4 (2026-08-06)
+
+### Fixed
+
 - Policy updates now preserve and send the `condition` field required by
   Automox advanced patch filters. Version 0.1.3 modeled that API field as `op`,
   so even a schedule-only update omitted every rule's required condition and
