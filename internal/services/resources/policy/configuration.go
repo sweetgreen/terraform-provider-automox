@@ -7,6 +7,11 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
@@ -38,8 +43,9 @@ func configurationSchema() schema.SingleNestedAttribute {
 		Attributes: map[string]schema.Attribute{
 			// --- patch ---
 			"patch_rule": schema.StringAttribute{
-				Optional: true,
-				Computed: true,
+				Optional:      true,
+				Computed:      true,
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 				MarkdownDescription: "How a patch policy selects patches: `all`, `filter`, " +
 					"`manual`, or `advanced`. Patch policies only.",
 				Validators: []validator.String{
@@ -49,16 +55,19 @@ func configurationSchema() schema.SingleNestedAttribute {
 			"auto_patch": schema.BoolAttribute{
 				Optional:            true,
 				Computed:            true,
+				PlanModifiers:       []planmodifier.Bool{boolplanmodifier.UseStateForUnknown()},
 				MarkdownDescription: "Install patches automatically when the policy runs.",
 			},
 			"auto_reboot": schema.BoolAttribute{
 				Optional:            true,
 				Computed:            true,
+				PlanModifiers:       []planmodifier.Bool{boolplanmodifier.UseStateForUnknown()},
 				MarkdownDescription: "Reboot devices automatically after patching.",
 			},
 			"filter_type": schema.StringAttribute{
-				Optional: true,
-				Computed: true,
+				Optional:      true,
+				Computed:      true,
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 				MarkdownDescription: "`all`, `include`, `exclude`, or `severity`.\n\n" +
 					"Automox requires this on **every** patch policy, not only when " +
 					"`patch_rule = \"filter\"` as its error message suggests.\n\n" +
@@ -72,13 +81,15 @@ func configurationSchema() schema.SingleNestedAttribute {
 			"filters": schema.ListAttribute{
 				Optional:            true,
 				Computed:            true,
+				PlanModifiers:       []planmodifier.List{listplanmodifier.UseStateForUnknown()},
 				ElementType:         types.StringType,
 				MarkdownDescription: "Package names to include or exclude, used with `filter_type`.",
 			},
 			"severity_filter": schema.ListAttribute{
-				Optional:    true,
-				Computed:    true,
-				ElementType: types.StringType,
+				Optional:      true,
+				Computed:      true,
+				PlanModifiers: []planmodifier.List{listplanmodifier.UseStateForUnknown()},
+				ElementType:   types.StringType,
 				MarkdownDescription: "Severities to act on when `filter_type = \"severity\"`: " +
 					"`no_known_cves`, `none`, `unknown`, `low`, `medium`, `high`, `critical`.",
 			},
@@ -107,6 +118,7 @@ func configurationSchema() schema.SingleNestedAttribute {
 						"op": schema.StringAttribute{
 							Optional:           true,
 							Computed:           true,
+							PlanModifiers:      []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 							DeprecationMessage: "Use condition. Automox does not accept op in advanced filters.",
 						},
 						"right": schema.StringAttribute{Required: true},
@@ -116,24 +128,28 @@ func configurationSchema() schema.SingleNestedAttribute {
 			"include_optional": schema.BoolAttribute{
 				Optional:            true,
 				Computed:            true,
+				PlanModifiers:       []planmodifier.Bool{boolplanmodifier.UseStateForUnknown()},
 				MarkdownDescription: "Include optional Windows updates.",
 			},
-			"missed_patch_window": schema.BoolAttribute{Optional: true, Computed: true},
+			"missed_patch_window": optionalComputedBool(),
 			"is_patch_tuesday": schema.BoolAttribute{
 				Optional:            true,
 				Computed:            true,
+				PlanModifiers:       []planmodifier.Bool{boolplanmodifier.UseStateForUnknown()},
 				MarkdownDescription: "Run only on the second Tuesday of the month.",
 			},
 			"patch_tuesday_offset": schema.Int64Attribute{
 				Optional:            true,
 				Computed:            true,
+				PlanModifiers:       []planmodifier.Int64{int64planmodifier.UseStateForUnknown()},
 				MarkdownDescription: "Days after Patch Tuesday to run, 0 to 26.",
 			},
 
 			// --- worklet, and returned on patch policies too ---
 			"os_family": schema.StringAttribute{
-				Optional: true,
-				Computed: true,
+				Optional:      true,
+				Computed:      true,
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 				MarkdownDescription: "`Windows`, `Mac`, or `Linux`. Required for worklet and " +
 					"required-software policies.\n\n" +
 					"Matched exactly: `macOS` and lowercase `windows` are both rejected.",
@@ -145,67 +161,76 @@ func configurationSchema() schema.SingleNestedAttribute {
 				},
 			},
 			"evaluation_code": schema.StringAttribute{
-				Optional: true,
-				Computed: true,
+				Optional:      true,
+				Computed:      true,
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 				MarkdownDescription: "Script deciding whether remediation is needed. Despite the " +
 					"vendor documentation, the API returns this on patch policies as well.",
 			},
 			"remediation_code": schema.StringAttribute{
 				Optional:            true,
 				Computed:            true,
+				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 				MarkdownDescription: "Script run when evaluation indicates remediation is needed.",
 			},
 			"installation_code": schema.StringAttribute{
 				Optional:            true,
 				Computed:            true,
+				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 				MarkdownDescription: "Installation script. Required for `required_software` policies.",
 			},
-			"refresh_before_remediation": schema.BoolAttribute{Optional: true, Computed: true},
+			"refresh_before_remediation": optionalComputedBool(),
 
 			// --- required software ---
-			"package_name":    schema.StringAttribute{Optional: true, Computed: true},
-			"package_version": schema.StringAttribute{Optional: true, Computed: true},
+			"package_name":    optionalComputedString(),
+			"package_version": optionalComputedString(),
 
 			// --- notification and deferral ---
-			"notify_user":                     schema.BoolAttribute{Optional: true, Computed: true},
-			"notify_reboot_user":              schema.BoolAttribute{Optional: true, Computed: true},
-			"notify_deferred_reboot_user":     schema.BoolAttribute{Optional: true, Computed: true},
-			"install_deferral_enabled":        schema.BoolAttribute{Optional: true, Computed: true},
-			"pending_reboot_deferral_enabled": schema.BoolAttribute{Optional: true, Computed: true},
+			"notify_user":                     optionalComputedBool(),
+			"notify_reboot_user":              optionalComputedBool(),
+			"notify_deferred_reboot_user":     optionalComputedBool(),
+			"install_deferral_enabled":        optionalComputedBool(),
+			"pending_reboot_deferral_enabled": optionalComputedBool(),
 			"notify_user_message_timeout": schema.Int64Attribute{
 				Optional: true, Computed: true,
+				PlanModifiers:       []planmodifier.Int64{int64planmodifier.UseStateForUnknown()},
 				MarkdownDescription: "Minutes a notification stays up, 15 to 480.",
 			},
-			"notify_deferred_reboot_user_message_timeout": schema.Int64Attribute{Optional: true, Computed: true},
-			"custom_notification_max_delays":              schema.Int64Attribute{Optional: true, Computed: true},
+			"notify_deferred_reboot_user_message_timeout": optionalComputedInt64(),
+			"custom_notification_max_delays":              optionalComputedInt64(),
 			"custom_notification_deferment_periods": schema.ListAttribute{
 				Optional: true, Computed: true, ElementType: types.Int64Type,
+				PlanModifiers:       []planmodifier.List{listplanmodifier.UseStateForUnknown()},
 				MarkdownDescription: "Deferral options offered to the user, in hours. At most three, each 24 or fewer.",
 			},
 			"custom_notification_patch_message": schema.StringAttribute{
 				Optional: true, Computed: true,
+				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 				MarkdownDescription: "Windows patch notification text, up to 125 characters.",
 			},
 			"custom_notification_patch_message_mac": schema.StringAttribute{
 				Optional: true, Computed: true,
+				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 				MarkdownDescription: "macOS patch notification text, up to 70 characters.",
 			},
-			"custom_notification_reboot_message":                schema.StringAttribute{Optional: true, Computed: true},
-			"custom_notification_reboot_message_mac":            schema.StringAttribute{Optional: true, Computed: true},
-			"notify_user_auto_deferral_enabled":                 schema.BoolAttribute{Optional: true, Computed: true},
-			"notify_deferred_reboot_user_auto_deferral_enabled": schema.BoolAttribute{Optional: true, Computed: true},
-			"custom_pending_reboot_notification_message":        schema.StringAttribute{Optional: true, Computed: true},
-			"custom_pending_reboot_notification_message_mac":    schema.StringAttribute{Optional: true, Computed: true},
-			"custom_pending_reboot_notification_max_delays":     schema.Int64Attribute{Optional: true, Computed: true},
+			"custom_notification_reboot_message":                optionalComputedString(),
+			"custom_notification_reboot_message_mac":            optionalComputedString(),
+			"notify_user_auto_deferral_enabled":                 optionalComputedBool(),
+			"notify_deferred_reboot_user_auto_deferral_enabled": optionalComputedBool(),
+			"custom_pending_reboot_notification_message":        optionalComputedString(),
+			"custom_pending_reboot_notification_message_mac":    optionalComputedString(),
+			"custom_pending_reboot_notification_max_delays":     optionalComputedInt64(),
 			"custom_pending_reboot_notification_deferment_periods": schema.ListAttribute{
 				Optional: true, Computed: true, ElementType: types.Int64Type,
+				PlanModifiers: []planmodifier.List{listplanmodifier.UseStateForUnknown()},
 			},
 
 			// --- targeting ---
-			"device_filters_enabled": schema.BoolAttribute{Optional: true, Computed: true},
+			"device_filters_enabled": optionalComputedBool(),
 			"device_filters": schema.ListNestedAttribute{
 				Optional:            true,
 				Computed:            true,
+				PlanModifiers:       []planmodifier.List{listplanmodifier.UseStateForUnknown()},
 				MarkdownDescription: "Narrows the policy to a subset of the devices in its server groups.",
 				NestedObject: schema.NestedAttributeObject{
 					Attributes: map[string]schema.Attribute{
@@ -234,17 +259,40 @@ func configurationSchema() schema.SingleNestedAttribute {
 			// --- undocumented, but returned live ---
 			"install_notification_deadline": schema.Int64Attribute{
 				Optional: true, Computed: true,
+				PlanModifiers: []planmodifier.Int64{int64planmodifier.UseStateForUnknown()},
 				MarkdownDescription: "Hours before installation is forced. Not present in Automox's " +
 					"published schema, but returned by the API.",
 			},
 			"pending_reboot_notification_deadline": schema.Int64Attribute{
 				Optional: true, Computed: true,
+				PlanModifiers: []planmodifier.Int64{int64planmodifier.UseStateForUnknown()},
 				MarkdownDescription: "Hours before a pending reboot is forced. Not present in " +
 					"Automox's published schema, but returned by the API.",
 			},
-			"install_do_not_disturb_honored": schema.BoolAttribute{Optional: true, Computed: true},
-			"reboot_do_not_disturb_honored":  schema.BoolAttribute{Optional: true, Computed: true},
+			"install_do_not_disturb_honored": optionalComputedBool(),
+			"reboot_do_not_disturb_honored":  optionalComputedBool(),
 		},
+	}
+}
+
+func optionalComputedString() schema.StringAttribute {
+	return schema.StringAttribute{
+		Optional: true, Computed: true,
+		PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+	}
+}
+
+func optionalComputedBool() schema.BoolAttribute {
+	return schema.BoolAttribute{
+		Optional: true, Computed: true,
+		PlanModifiers: []planmodifier.Bool{boolplanmodifier.UseStateForUnknown()},
+	}
+}
+
+func optionalComputedInt64() schema.Int64Attribute {
+	return schema.Int64Attribute{
+		Optional: true, Computed: true,
+		PlanModifiers: []planmodifier.Int64{int64planmodifier.UseStateForUnknown()},
 	}
 }
 

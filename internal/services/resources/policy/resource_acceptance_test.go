@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework/providerserver"
@@ -106,6 +107,22 @@ func TestAccPolicy_PatchLifecycle(t *testing.T) {
 				ImportStateVerifyIgnore: []string{"schedule_days_of_week", "schedule_months_of_year"},
 			},
 			{
+				// Change only the schedule. API-populated metadata and configuration
+				// must remain concrete in the plan instead of all becoming known after
+				// apply; the offline modifier tests assert that planning behavior.
+				Config: configPatchAtTime(groupName, parent, name, `"include"`, `["Google Chrome"]`, "01:00"),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("automox_policy.test", "schedule_time", "01:00"),
+					resource.TestCheckResourceAttrSet("automox_policy.test", "create_time"),
+					resource.TestCheckResourceAttr("automox_policy.test", "server_count", "0"),
+					resource.TestCheckResourceAttrSet("automox_policy.test", "configuration.patch_rule"),
+				),
+			},
+			{
+				Config:   configPatchAtTime(groupName, parent, name, `"include"`, `["Google Chrome"]`, "01:00"),
+				PlanOnly: true,
+			},
+			{
 				Config: configPatch(groupName, parent, renamed, `"include"`, `["Firefox", "Microsoft Edge"]`),
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr("automox_policy.test", "name", renamed),
@@ -192,6 +209,15 @@ resource "automox_policy" "test" {
   }
 }
 `, groupName, parent, name, filterType, filters)
+}
+
+func configPatchAtTime(groupName string, parent int64, name, filterType, filters, scheduleTime string) string {
+	return strings.Replace(
+		configPatch(groupName, parent, name, filterType, filters),
+		`schedule_time = "00:00"`,
+		fmt.Sprintf(`schedule_time = %q`, scheduleTime),
+		1,
+	)
 }
 
 func configNamedSchedule(groupName string, parent int64, name string) string {

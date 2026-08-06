@@ -17,6 +17,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/mapplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
@@ -183,13 +184,16 @@ func (r *policyResource) Schema(_ context.Context, _ resource.SchemaRequest, res
 			"status": schema.StringAttribute{
 				Computed:            true,
 				MarkdownDescription: "`active` or `inactive`.",
+				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
 			"server_count": schema.Int64Attribute{
 				Computed:            true,
 				MarkdownDescription: "Devices this policy currently applies to.",
+				PlanModifiers:       []planmodifier.Int64{int64planmodifier.UseStateForUnknown()},
 			},
 			"create_time": schema.StringAttribute{
-				Computed: true,
+				Computed:      true,
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
 			"next_remediation": schema.StringAttribute{
 				Computed: true,
@@ -199,6 +203,9 @@ func (r *policyResource) Schema(_ context.Context, _ resource.SchemaRequest, res
 			"secret_bindings": schema.MapAttribute{
 				Computed:    true,
 				ElementType: types.StringType,
+				PlanModifiers: []planmodifier.Map{
+					mapplanmodifier.UseStateForUnknown(),
+				},
 				MarkdownDescription: "Automox Shared Secrets bound to this policy, as secret name " +
 					"to secret ID. A worklet reads a secret by the name it is bound under, so " +
 					"changing or removing a binding changes what that worklet can do.\n\n" +
