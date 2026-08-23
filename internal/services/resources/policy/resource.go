@@ -189,7 +189,7 @@ func (r *policyResource) Schema(_ context.Context, _ resource.SchemaRequest, res
 			"server_count": schema.Int64Attribute{
 				Computed:            true,
 				MarkdownDescription: "Devices this policy currently applies to.",
-				PlanModifiers:       []planmodifier.Int64{int64planmodifier.UseStateForUnknown()},
+				PlanModifiers:       []planmodifier.Int64{serverCountUseStateForUnknown()},
 			},
 			"create_time": schema.StringAttribute{
 				Computed:      true,
