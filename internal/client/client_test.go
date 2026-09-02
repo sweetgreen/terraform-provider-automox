@@ -70,7 +70,7 @@ func TestUnitDo_SendsBearerTokenInHeaderOnly(t *testing.T) {
 	c, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 		gotAuth = r.Header.Get("Authorization")
 		gotRawQuery = r.URL.RawQuery
-		w.Write([]byte(`{}`))
+		_, _ = w.Write([]byte(`{}`))
 	})
 
 	if err := c.Do(context.Background(), Request{
@@ -91,7 +91,7 @@ func TestUnitDo_AppliesOrgScoping(t *testing.T) {
 	var got url.Values
 	c, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 		got = r.URL.Query()
-		w.Write([]byte(`{}`))
+		_, _ = w.Write([]byte(`{}`))
 	})
 
 	t.Run("query scope adds o", func(t *testing.T) {
@@ -138,7 +138,7 @@ func TestUnitDo_PreservesAwkwardQueryParameterNames(t *testing.T) {
 	var got url.Values
 	c, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 		got = r.URL.Query()
-		w.Write([]byte(`{}`))
+		_, _ = w.Write([]byte(`{}`))
 	})
 
 	awkward := url.Values{
@@ -203,7 +203,7 @@ func TestUnitDo_HandlesEmptyResponseBodies(t *testing.T) {
 
 func TestUnitDo_SurfacesUndecodableSuccessBody(t *testing.T) {
 	c, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`<html>not json</html>`))
+		_, _ = w.Write([]byte(`<html>not json</html>`))
 	})
 
 	var out map[string]any
@@ -222,7 +222,7 @@ func TestUnitDo_SurfacesUndecodableSuccessBody(t *testing.T) {
 func TestUnitDo_NonSuccessBecomesAPIError(t *testing.T) {
 	c, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusForbidden)
-		w.Write([]byte(`{"errors":["You do not have permission to perform this action."]}`))
+		_, _ = w.Write([]byte(`{"errors":["You do not have permission to perform this action."]}`))
 	})
 
 	err := c.Do(context.Background(), Request{
@@ -242,9 +242,9 @@ func TestUnitDo_SendsJSONBody(t *testing.T) {
 	var contentType string
 	c, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 		contentType = r.Header.Get("Content-Type")
-		json.NewDecoder(r.Body).Decode(&got)
+		_ = json.NewDecoder(r.Body).Decode(&got)
 		w.WriteHeader(http.StatusCreated)
-		w.Write([]byte(`{"id":1}`))
+		_, _ = w.Write([]byte(`{"id":1}`))
 	})
 
 	body := map[string]any{"name": "TESTING-group", "refresh_interval": 1440}
@@ -425,7 +425,7 @@ func TestUnitOrganizationUUID_ResolvesAndCaches(t *testing.T) {
 	var calls int32
 	c, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 		atomic.AddInt32(&calls, 1)
-		w.Write([]byte(`[{"id":120547,"uuid":"3f23a2f9-4e0b-4ab4-9c76-0eb088793697","name":"Sweetgreen"}]`))
+		_, _ = w.Write([]byte(`[{"id":120547,"uuid":"3f23a2f9-4e0b-4ab4-9c76-0eb088793697","name":"Sweetgreen"}]`))
 	})
 
 	for i := 0; i < 3; i++ {
@@ -445,7 +445,7 @@ func TestUnitOrganizationUUID_ResolvesAndCaches(t *testing.T) {
 
 func TestUnitOrganizationUUID_UnknownOrgNamesWhatIsVisible(t *testing.T) {
 	c, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`[{"id":120547,"uuid":"abc","name":"Sweetgreen"}]`))
+		_, _ = w.Write([]byte(`[{"id":120547,"uuid":"abc","name":"Sweetgreen"}]`))
 	})
 
 	_, err := c.OrganizationUUID(context.Background(), 999999)
@@ -466,10 +466,10 @@ func TestUnitOrganizationUUID_DoesNotCacheFailures(t *testing.T) {
 	c, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 		if atomic.AddInt32(&calls, 1) == 1 {
 			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte(`{"errors":["boom"]}`))
+			_, _ = w.Write([]byte(`{"errors":["boom"]}`))
 			return
 		}
-		w.Write([]byte(`[{"id":120547,"uuid":"abc","name":"Sweetgreen"}]`))
+		_, _ = w.Write([]byte(`[{"id":120547,"uuid":"abc","name":"Sweetgreen"}]`))
 	})
 
 	if _, err := c.DefaultOrganizationUUID(context.Background()); err == nil {
@@ -487,7 +487,7 @@ func TestUnitOrganizationUUID_DoesNotCacheFailures(t *testing.T) {
 
 func TestUnitOrganizationUUID_MissingUUIDIsExplicit(t *testing.T) {
 	c, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`[{"id":120547,"name":"Sweetgreen"}]`))
+		_, _ = w.Write([]byte(`[{"id":120547,"name":"Sweetgreen"}]`))
 	})
 
 	_, err := c.OrganizationUUID(context.Background(), 120547)

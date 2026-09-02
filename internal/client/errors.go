@@ -2,6 +2,7 @@ package client
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"sort"
@@ -86,15 +87,15 @@ func (e *APIError) Error() string {
 // regression look like deletion and make Terraform plan the destruction and
 // recreation of live patch policies governing production endpoints.
 func IsNotFound(err error) bool {
-	apiErr, ok := err.(*APIError)
-	return ok && apiErr.StatusCode == http.StatusNotFound
+	var apiErr *APIError
+	return errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusNotFound
 }
 
 // IsForbidden reports an authorization failure. Callers surface this; they never
 // convert it into absence or an empty collection.
 func IsForbidden(err error) bool {
-	apiErr, ok := err.(*APIError)
-	return ok && apiErr.StatusCode == http.StatusForbidden
+	var apiErr *APIError
+	return errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusForbidden
 }
 
 // IsRetryable reports whether the request may be retried after a backoff. 429 is
@@ -102,8 +103,8 @@ func IsForbidden(err error) bool {
 // minute); 409 is a conflict the scheduled-window endpoint documents; 503 is
 // transient unavailability.
 func IsRetryable(err error) bool {
-	apiErr, ok := err.(*APIError)
-	if !ok {
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) {
 		return false
 	}
 	switch apiErr.StatusCode {

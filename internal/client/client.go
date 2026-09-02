@@ -256,7 +256,9 @@ func (c *Client) attempt(ctx context.Context, method, endpoint string, payload [
 		// A transport failure is never absence and never an empty result.
 		return nil, fmt.Errorf("automox: %s %s failed: %w", method, redactURL(endpoint), err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	respBody, readErr := io.ReadAll(resp.Body)
 	if readErr != nil {
