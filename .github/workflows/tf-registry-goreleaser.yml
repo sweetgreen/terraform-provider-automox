@@ -59,9 +59,9 @@ jobs:
       #
       # It only bites when the requested Go is not already cached on the runner,
       # which is why the other providers do not hit it -- they ask for 1.25.x and
-      # this repository's go.mod floor is 1.26.5, raised for standard library
-      # fixes in crypto/tls, crypto/x509 and net/textproto. Lowering the floor to
-      # match the runner would trade a security fix for a green pipeline.
+      # this repository's go.mod floor is 1.26.6, raised for standard library
+      # security fixes. Lowering the floor to match the runner would trade a
+      # security fix for a green pipeline.
       #
       # The remaining cleanups still free the bulk of the space.
       - name: Free up Ubuntu runner disk space
