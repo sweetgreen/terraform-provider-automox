@@ -62,7 +62,7 @@ func TestUnitRetry_RefusesAbsurdRetryAfter(t *testing.T) {
 		attempts++
 		w.Header().Set("Retry-After", "86400") // one day
 		w.WriteHeader(http.StatusTooManyRequests)
-		fmt.Fprint(w, `{"errors":["rate limited"]}`)
+		_, _ = fmt.Fprint(w, `{"errors":["rate limited"]}`)
 	}))
 	t.Cleanup(srv.Close)
 
@@ -114,10 +114,10 @@ func TestUnitRetry_HonoursRetryAfterWithinTheCeiling(t *testing.T) {
 		if attempts == 1 {
 			w.Header().Set("Retry-After", "60")
 			w.WriteHeader(http.StatusTooManyRequests)
-			fmt.Fprint(w, `{"errors":["rate limited"]}`)
+			_, _ = fmt.Fprint(w, `{"errors":["rate limited"]}`)
 			return
 		}
-		fmt.Fprint(w, `[]`)
+		_, _ = fmt.Fprint(w, `[]`)
 	}))
 	t.Cleanup(srv.Close)
 

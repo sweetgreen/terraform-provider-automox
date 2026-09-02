@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 )
@@ -94,7 +95,8 @@ func (p RetryPolicy) Do(ctx context.Context, attempt func() ([]byte, error)) ([]
 				// Context cancelled mid-backoff. Report the original failure with
 				// the reason we stopped, rather than a bare context error that
 				// hides what actually went wrong.
-				return nil, fmt.Errorf("%w (retry abandoned: %v)", lastErr, err)
+				stopReason := err.Error()
+				return nil, fmt.Errorf("%w (retry abandoned: %s)", lastErr, stopReason)
 			}
 			if backoff < p.MaxBackoff {
 				backoff *= 2
@@ -120,7 +122,8 @@ func (p RetryPolicy) Do(ctx context.Context, attempt func() ([]byte, error)) ([]
 
 // delayFor prefers the server's own guidance over local backoff.
 func (p RetryPolicy) delayFor(err error, backoff time.Duration) time.Duration {
-	if apiErr, ok := err.(*APIError); ok {
+	var apiErr *APIError
+	if errors.As(err, &apiErr) {
 		if apiErr.RetryAfter > 0 {
 			return apiErr.RetryAfter
 		}

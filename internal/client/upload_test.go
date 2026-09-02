@@ -40,7 +40,7 @@ func TestUnitUpload_SendsMultipart(t *testing.T) {
 		body, _ := io.ReadAll(part)
 		gotContent = string(body)
 
-		w.Write([]byte(`{"uuid":"abc"}`))
+		_, _ = w.Write([]byte(`{"uuid":"abc"}`))
 	}))
 	t.Cleanup(srv.Close)
 
@@ -105,7 +105,7 @@ func TestUnitUpload_RetryReplaysTheBody(t *testing.T) {
 			w.WriteHeader(http.StatusTooManyRequests)
 			return
 		}
-		w.Write([]byte(`{"uuid":"abc"}`))
+		_, _ = w.Write([]byte(`{"uuid":"abc"}`))
 	}))
 	t.Cleanup(srv.Close)
 

@@ -43,12 +43,12 @@ func pagedServer(t *testing.T, envelope Envelope, total int) (*Client, *[]int) {
 		body, _ := json.Marshal(items)
 		switch envelope {
 		case EnvelopeArray:
-			w.Write(body)
+			_, _ = w.Write(body)
 		case EnvelopeResults:
-			fmt.Fprintf(w, `{"results":%s,"size":%d}`, body, total)
+			_, _ = fmt.Fprintf(w, `{"results":%s,"size":%d}`, body, total)
 		case EnvelopeData:
 			pages := (total + limit - 1) / limit
-			fmt.Fprintf(w,
+			_, _ = fmt.Fprintf(w,
 				`{"data":%s,"metadata":{"total_count":%d,"total_pages":%d,"current_page":%d,"limit":%d}}`,
 				body, total, pages, page, limit)
 		}
@@ -156,7 +156,7 @@ func TestUnitList_UnpagedSendsNoPagingParametersAndFetchesOnce(t *testing.T) {
 		if q.Has("page") || q.Has("limit") {
 			sawPaging = true
 		}
-		w.Write([]byte(`[{"id":0},{"id":1},{"id":2}]`))
+		_, _ = w.Write([]byte(`[{"id":0},{"id":1},{"id":2}]`))
 	}))
 	defer srv.Close()
 
@@ -188,11 +188,11 @@ func TestUnitList_UnpagedSendsNoPagingParametersAndFetchesOnce(t *testing.T) {
 func TestUnitList_FailsLoudlyMidWalkRatherThanTruncating(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Query().Get("page") == "0" {
-			w.Write([]byte(`[{"id":0},{"id":1}]`))
+			_, _ = w.Write([]byte(`[{"id":0},{"id":1}]`))
 			return
 		}
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte(`{"errors":["upstream exploded"]}`))
+		_, _ = w.Write([]byte(`{"errors":["upstream exploded"]}`))
 	}))
 	defer srv.Close()
 
@@ -218,7 +218,7 @@ func TestUnitList_FailsLoudlyMidWalkRatherThanTruncating(t *testing.T) {
 // loop until memory ran out.
 func TestUnitList_BoundsRunawayPagination(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`[{"id":1},{"id":2}]`))
+		_, _ = w.Write([]byte(`[{"id":1},{"id":2}]`))
 	}))
 	defer srv.Close()
 
@@ -244,7 +244,7 @@ func TestUnitList_BoundsRunawayPagination(t *testing.T) {
 func TestUnitList_TreatsNullCollectionAsEmpty(t *testing.T) {
 	for _, body := range []string{`{"data":null,"metadata":{"total_count":0}}`, `{"results":null,"size":0}`} {
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.Write([]byte(body))
+			_, _ = w.Write([]byte(body))
 		}))
 
 		envelope := EnvelopeData
@@ -276,7 +276,7 @@ func TestUnitList_TreatsNullCollectionAsEmpty(t *testing.T) {
 // was expected rather than surfacing an opaque decode failure.
 func TestUnitList_MismatchedEnvelopeIsDiagnosable(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`{"results":[{"id":1}],"size":1}`))
+		_, _ = w.Write([]byte(`{"results":[{"id":1}],"size":1}`))
 	}))
 	defer srv.Close()
 
@@ -308,10 +308,10 @@ func TestUnitList_PreservesCallerQueryAcrossPages(t *testing.T) {
 		seen = append(seen, r.URL.Query().Get("status:in"))
 		page := r.URL.Query().Get("page")
 		if page == "0" {
-			w.Write([]byte(`[{"id":0},{"id":1}]`))
+			_, _ = w.Write([]byte(`[{"id":0},{"id":1}]`))
 			return
 		}
-		w.Write([]byte(`[]`))
+		_, _ = w.Write([]byte(`[]`))
 	}))
 	defer srv.Close()
 
@@ -408,7 +408,7 @@ func TestListBoundedShrinksPageSize(t *testing.T) {
 		limits = append(limits, limit)
 		items := make([]item, limit)
 		body, _ := json.Marshal(items)
-		w.Write(body)
+		_, _ = w.Write(body)
 	}))
 	t.Cleanup(srv.Close)
 
