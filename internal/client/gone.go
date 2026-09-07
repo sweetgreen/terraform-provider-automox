@@ -81,8 +81,9 @@ func IsGone(ctx context.Context, err error, mode GoneMode, exists ExistsFunc) (b
 	if listErr != nil {
 		// The credential cannot even list, so the 403 is a permissions problem.
 		// Report both: the original failure, and the evidence that led here.
+		listFailure := listErr.Error()
 		return false, fmt.Errorf(
-			"%w (could not confirm whether the resource still exists; listing also failed: %v)", err, listErr)
+			"%w (could not confirm whether the resource still exists; listing also failed: %s)", err, listFailure)
 	}
 
 	if found {

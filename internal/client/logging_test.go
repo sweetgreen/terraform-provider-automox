@@ -44,7 +44,7 @@ func captureLogs(t *testing.T, fn func(ctx context.Context)) string {
 	func() {
 		defer func() {
 			os.Stderr = original
-			w.Close()
+			_ = w.Close()
 		}()
 		fn(ctx)
 	}()
@@ -59,7 +59,7 @@ func TestUnitLogging_NeverLogsTheAPIKey(t *testing.T) {
 	const secret = "5f4dcc3b-5aa7-65d6-1d8f-27b6e21fbdcc"
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`{"ok":true}`))
+		_, _ = w.Write([]byte(`{"ok":true}`))
 	}))
 	defer srv.Close()
 
@@ -95,7 +95,7 @@ func TestUnitLogging_NeverLogsTheAPIKey(t *testing.T) {
 
 func TestUnitLogging_RecordsRequestAndOutcome(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`{"ok":true}`))
+		_, _ = w.Write([]byte(`{"ok":true}`))
 	}))
 	defer srv.Close()
 
@@ -133,7 +133,7 @@ func TestUnitLogging_ClientErrorsAreWarningsAndServerErrorsAreErrors(t *testing.
 	for _, tc := range cases {
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(tc.status)
-			w.Write([]byte(`{"errors":["nope"]}`))
+			_, _ = w.Write([]byte(`{"errors":["nope"]}`))
 		}))
 
 		c, _ := New(Options{
@@ -184,7 +184,7 @@ func TestUnitLogging_DoesNotLogResponseBodies(t *testing.T) {
 	const canary = "SUPER-SENSITIVE-ACCESS-KEY-VALUE"
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(map[string]string{"access_key": canary})
+		_ = json.NewEncoder(w).Encode(map[string]string{"access_key": canary})
 	}))
 	defer srv.Close()
 
@@ -206,7 +206,7 @@ func TestUnitLogging_DoesNotLogResponseBodies(t *testing.T) {
 // harness rely on this: the client must work with no logger configured.
 func TestUnitLogging_NoOpWithoutATerraformLogger(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`{"ok":true}`))
+		_, _ = w.Write([]byte(`{"ok":true}`))
 	}))
 	defer srv.Close()
 
@@ -250,7 +250,7 @@ func TestUnitRedactHeaders(t *testing.T) {
 // caller's client.
 func TestUnitLogging_WrapsCustomTransportWithoutMutatingCaller(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`{}`))
+		_, _ = w.Write([]byte(`{}`))
 	}))
 	defer srv.Close()
 
