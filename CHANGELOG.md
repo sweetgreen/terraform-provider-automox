@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.1.6 (2026-09-07)
+
+### Fixed
+
+- Attaching, changing or detaching a policy's `server_groups` no longer fails the
+  apply with "Provider produced inconsistent result after apply: .server_count".
+
+  `server_count` is API-populated from live group membership. 0.1.5 preserved it
+  from refreshed state so that schedule-only plans stayed readable, but that is
+  only safe while `server_groups` is unchanged: retargeting a policy legitimately
+  changes the count, the provider planned the old value as known, and Terraform
+  rejected the mismatch *after* the change had already been written. The apply
+  reported failure even though the change had landed and state was correct.
+
+  `server_count` now falls back to `known after apply` whenever `server_groups`
+  is in the diff, and keeps the 0.1.5 behavior otherwise.
+
 ## 0.1.5 (2026-08-06)
 
 ### Fixed
