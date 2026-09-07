@@ -171,6 +171,72 @@ func TestUnitServerCountUnknownOnlyWhenServerGroupsChange(t *testing.T) {
 	}
 }
 
+// A policy that targeted no groups at all is the case that took down
+// sweetgreen/terraform-infrastructure#1687: server_groups went from [] to one
+// group of 50 devices, so server_count went 0 -> 50 and the apply failed the
+// consistency check after the change had already been written. An empty state
+// list is worth its own case -- it is the shape every newly-attached policy
+// has, and equality against an empty list is easy to get wrong.
+func TestUnitServerCountUnknownWhenGroupsAttachedFromNone(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+
+	var schemaResp resource.SchemaResponse
+	(&policyResource{}).Schema(ctx, resource.SchemaRequest{}, &schemaResp)
+	resourceSchema := schemaResp.Schema
+
+	stateCount := int64(0)
+	stateModel, diags := flatten(ctx, &apiPolicy{
+		ID:             554218,
+		Name:           "Corporate macOS - Security Definitions Updates Policy",
+		PolicyTypeName: TypePatch,
+		ServerGroups:   []int64{},
+		ServerCount:    &stateCount,
+		Configuration:  map[string]any{},
+	}, policyModel{})
+	if diags.HasError() {
+		t.Fatalf("flatten state: %v", diags.Errors())
+	}
+
+	planModel := stateModel
+	groups, groupDiags := types.ListValueFrom(ctx, types.Int64Type, []int64{262169})
+	if groupDiags.HasError() {
+		t.Fatalf("build plan server_groups: %v", groupDiags.Errors())
+	}
+	planModel.Groups = groups
+	planModel.ServerCount = types.Int64Unknown()
+
+	state := tfsdk.State{Schema: resourceSchema}
+	if d := state.Set(ctx, stateModel); d.HasError() {
+		t.Fatalf("set state: %v", d.Errors())
+	}
+	plan := tfsdk.Plan{Schema: resourceSchema}
+	if d := plan.Set(ctx, planModel); d.HasError() {
+		t.Fatalf("set plan: %v", d.Errors())
+	}
+
+	req := planmodifier.Int64Request{
+		Path:        path.Root("server_count"),
+		Plan:        plan,
+		PlanValue:   types.Int64Unknown(),
+		State:       state,
+		StateValue:  stateModel.ServerCount,
+		Config:      tfsdk.Config{Schema: resourceSchema},
+		ConfigValue: types.Int64Null(),
+	}
+	resp := planmodifier.Int64Response{PlanValue: req.PlanValue}
+
+	serverCountUseStateForUnknown().PlanModifyInt64(ctx, req, &resp)
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("plan modify: %v", resp.Diagnostics.Errors())
+	}
+	if !resp.PlanValue.IsUnknown() {
+		t.Fatalf("server_count = %v, want known after apply: attaching a group to a "+
+			"policy that targeted none changes the count the API reports", resp.PlanValue)
+	}
+}
+
 func assertModifierCount(t *testing.T, attribute schema.Attribute, want int) {
 	t.Helper()
 
