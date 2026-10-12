@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.1.7 (2026-10-12)
+
+### Fixed
+
+- A policy whose `evaluation_code`, `remediation_code` or `installation_code`
+  ends in a newline no longer fails the apply with "Provider produced
+  inconsistent result after apply", and the policy is no longer left tainted.
+
+  Automox trims every script when it saves it, and 0.1.6 recorded the trimmed
+  value in state. A script loaded with `file()` almost always ends in a
+  newline, so it read back shorter than planned. Terraform then rejected the
+  result after the policy had already been created.
+
+  The three script attributes now treat the configured script and the copy
+  Automox stores as the same value when they differ only by what Automox
+  trims. The configured script stays in state and the next plan is empty. A
+  `chomp()` or `trimspace()` around `file()` is no longer needed. Any other
+  change to a script, including a change to whitespace inside it, still shows
+  in the plan.
+
+  Automox trims more than a trailing newline. On both ends it removes CRLF,
+  repeated newlines, spaces and tabs, a UTF-8 byte-order mark, and other
+  Unicode whitespace and invisible characters. The provider ignores exactly
+  that set, measured against the live API, and nothing more.
+
+  Importing a policy records the scripts as Automox stores them. If the
+  configuration's script ends in whitespace, the first plan after an import
+  shows one in-place update of that attribute. Applying it changes nothing in
+  Automox, and later plans are empty.
+
+  State written by 0.1.6 is read unchanged.
+
 ## 0.1.6 (2026-09-07)
 
 ### Fixed

@@ -11,6 +11,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 
 	"github.com/sweetgreen/terraform-provider-automox/internal/schedule"
 )
@@ -217,11 +218,15 @@ func stringOf(cfg map[string]attr.Value, name string) string {
 	if !ok || v.IsNull() || v.IsUnknown() {
 		return ""
 	}
-	s, ok := v.(types.String)
+	s, ok := v.(basetypes.StringValuable)
 	if !ok {
 		return ""
 	}
-	return s.ValueString()
+	str, diags := s.ToStringValue(context.Background())
+	if diags.HasError() {
+		return ""
+	}
+	return str.ValueString()
 }
 
 // isUnset reports whether an attribute was left out of the configuration.
