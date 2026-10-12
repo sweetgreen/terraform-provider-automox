@@ -20,6 +20,8 @@ import (
 
 func nullOf(typ attr.Type) attr.Value {
 	switch t := typ.(type) {
+	case scriptStringType:
+		return scriptStringNull()
 	case basetypes.StringType:
 		return types.StringNull()
 	case basetypes.BoolType:
@@ -37,6 +39,10 @@ func nullOf(typ attr.Type) attr.Value {
 
 func goToAttr(ctx context.Context, typ attr.Type, raw any) attr.Value {
 	switch t := typ.(type) {
+	case scriptStringType:
+		if s, ok := raw.(string); ok {
+			return scriptString(s)
+		}
 	case basetypes.StringType:
 		if s, ok := raw.(string); ok {
 			return types.StringValue(s)

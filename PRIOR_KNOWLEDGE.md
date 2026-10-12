@@ -1,32 +1,45 @@
-# Prior Knowledge: Repair Go Lint Action Pin
+# Prior Knowledge: Automox script trimming (task 282a-automox-provider)
 
-## Knowledge-base search
+Source: `terraform-infrastructure/.project-knowledge` (read-only). Pages searched
+for automox, provider, worklet, newline, release, atlantis, registry.
 
-No project knowledge base exists yet in `terraform-provider-automox`; this is the
-first task in this checkout with reusable project knowledge to consult.
+## Directly relevant
 
-A sibling repository's knowledge base was searched for `golangci`, GitHub
-Actions, workflow, Automox, and lint references. It contains an unrelated
-Automox infrastructure migration page but no guidance relevant to this
-provider's Go lint workflow or action pinning, so it was not used as project
-knowledge.
+- **automox-worklet-trailing-newline** (`23e5-add-automox-test`): Automox drops
+  the final newline from `evaluation_code` / `remediation_code`; a `file()`
+  script ending in `\n` fails with "Provider produced inconsistent result after
+  apply" and leaves the policy tainted (#1804, policy 1026975 → 1026979).
+  `modules/automox/worklet-policy` now `chomp()`s both scripts; every existing
+  worklet unit planned "No changes" after that. Advice: wrap scripts in
+  `chomp()` outside the module. This page should be updated once v0.1.7 ships
+  (the provider fix makes it unnecessary, and the API trims far more than one
+  newline; see SPEC.md).
+- **automox-test-organization**: Sweetgreen-Test org is `183625`
+  (`environments/automox/sweetgreen-test/`), production is `120547`
+  (`environments/automox/sweetgreen/`). API keys are org-scoped: a key used on
+  the other org returns 403. Test key: 1Password Homelab / "Automox Terraform
+  Provider" / Test. `automox.hcl` picks the key via `automox_api_key_env` in
+  `account.hcl`. A provider bump in `automox.hcl` therefore plans units in
+  both orgs.
+- **atlantis-apply-workflow**: approve → `atlantis apply` → merge. Apply is
+  refused until the PR is approved; Atlantis does not apply on merge here, so
+  merging first causes drift. Locks are per project.
+- **terraform-registry-github-token**: the private registry
+  (`registry.sweetgreen.engineering`) serves releases by `v${version}` tag and
+  hides pre-release-flagged releases. A cold `tofu init` is the real test that
+  a new version resolves.
 
-## Applicable context supplied with this task
+## Background
 
-- The workflow has failed during job setup on every run because the referenced
-  action commit cannot be resolved.
-- The intended action release is `golangci/golangci-lint-action` v9.0.0; action
-  pins should remain full immutable SHAs with trailing version comments.
-- The configured linter is golangci-lint v2.6.0.
-- The failure predates and is independent of PR #9.
-- A separate Go standard-library CVE failure is out of scope.
+- **automox-worklet-os-family**: `os_family` is case-sensitive (`Windows`,
+  `Mac`, `Linux`) and caller-owned in the module.
+- **automox-cross-state-unit-migration**: Automox units run .tf files in place
+  (no `terraform { source }`), so a plan of every unit is the bump's proof.
+- **automox-organization-wide-worklet-safety**: worklets run code on endpoints;
+  acceptance tests and probes must target no devices and have no schedule.
 
-## Implications for specification and planning
+## Gaps
 
-- Verify the tag target independently before editing.
-- Keep the change narrowly limited to the invalid pin unless the exact CI linter
-  reveals real findings.
-- Test the linter locally because resolving the action will expose its output for
-  the first time.
-- Record the setup-failure diagnostic pattern in the new project knowledge base
-  after the change ships.
+No page covers the provider repository itself (release flow, acceptance test
+envelope, semantic-equality patterns). The provider repo has no knowledge base
+of its own.

@@ -130,6 +130,8 @@ Optional:
 - `device_filters` (Attributes List) Narrows the policy to a subset of the devices in its server groups. (see [below for nested schema](#nestedatt--configuration--device_filters))
 - `device_filters_enabled` (Boolean)
 - `evaluation_code` (String) Script deciding whether remediation is needed. Despite the vendor documentation, the API returns this on patch policies as well.
+
+Automox removes leading and trailing whitespace (and invisible characters such as a byte-order mark) when it saves a script. The provider sends the script as written and treats the trimmed copy Automox returns as the same value, so a script loaded with `file()` needs no `chomp()`. Any other difference is a change.
 - `filter_type` (String) `all`, `include`, `exclude`, or `severity`.
 
 Automox requires this on **every** patch policy, not only when `patch_rule = "filter"` as its error message suggests.
@@ -141,6 +143,8 @@ Automox requires this on **every** patch policy, not only when `patch_rule = "fi
 - `install_do_not_disturb_honored` (Boolean)
 - `install_notification_deadline` (Number) Hours before installation is forced. Not present in Automox's published schema, but returned by the API.
 - `installation_code` (String) Installation script. Required for `required_software` policies.
+
+Automox removes leading and trailing whitespace (and invisible characters such as a byte-order mark) when it saves a script. The provider sends the script as written and treats the trimmed copy Automox returns as the same value, so a script loaded with `file()` needs no `chomp()`. Any other difference is a change.
 - `is_patch_tuesday` (Boolean) Run only on the second Tuesday of the month.
 - `missed_patch_window` (Boolean)
 - `notify_deferred_reboot_user` (Boolean)
@@ -162,6 +166,8 @@ Matched exactly: `macOS` and lowercase `windows` are both rejected.
 - `reboot_do_not_disturb_honored` (Boolean)
 - `refresh_before_remediation` (Boolean)
 - `remediation_code` (String) Script run when evaluation indicates remediation is needed.
+
+Automox removes leading and trailing whitespace (and invisible characters such as a byte-order mark) when it saves a script. The provider sends the script as written and treats the trimmed copy Automox returns as the same value, so a script loaded with `file()` needs no `chomp()`. Any other difference is a change.
 - `severity_filter` (List of String) Severities to act on when `filter_type = "severity"`: `no_known_cves`, `none`, `unknown`, `low`, `medium`, `high`, `critical`.
 
 <a id="nestedatt--configuration--advanced_filter"></a>

@@ -198,6 +198,9 @@ func attrToGo(ctx context.Context, value attr.Value) (any, diag.Diagnostics) {
 	switch v := value.(type) {
 	case types.String:
 		return v.ValueString(), diags
+	case scriptStringValue:
+		// Sent as configured. Automox does its own trimming.
+		return v.ValueString(), diags
 	case types.Bool:
 		return v.ValueBool(), diags
 	case types.Int64:

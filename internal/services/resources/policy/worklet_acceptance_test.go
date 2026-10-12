@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/plancheck"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 
 	"github.com/sweetgreen/terraform-provider-automox/internal/acceptance"
 )
@@ -75,6 +77,132 @@ func TestAccPolicy_WorkletLifecycle(t *testing.T) {
 			},
 		},
 	})
+}
+
+// TestAccPolicy_ScriptWhitespace covers scripts that end in whitespace, which is
+// what file() produces from almost any editor.
+//
+// Automox trims both ends of a script when it saves it. Before v0.1.7 the
+// provider recorded the trimmed value, so this create failed with "Provider
+// produced inconsistent result after apply" and left the policy tainted. The
+// configured value must now survive create, refresh and import, and a real
+// change to the script must still plan as an update.
+func TestAccPolicy_ScriptWhitespace(t *testing.T) {
+	acceptance.SkipUnlessAcceptance(t)
+	acceptance.PreCheck(t)
+	acceptance.RequireWriteScope(t)
+
+	parent := defaultGroupID(t)
+	groupName := acceptance.Name("ws-target")
+	name := acceptance.Name("worklet-ws")
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { acceptance.PreCheck(t) },
+		ProtoV6ProviderFactories: protoV6(),
+		CheckDestroy:             checkDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: configWorkletScripts(groupName, parent, name, "exit 0\n", "exit 0\r\n"),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("automox_policy.test", "configuration.evaluation_code", "exit 0\n"),
+					resource.TestCheckResourceAttr("automox_policy.test", "configuration.remediation_code", "exit 0\r\n"),
+					resource.TestCheckResourceAttr("automox_policy.test", "schedule_days", "0"),
+					resource.TestCheckResourceAttr("automox_policy.test", "server_count", "0"),
+				),
+			},
+			{
+				// Refresh reads back the trimmed scripts; the plan must still be empty.
+				Config:   configWorkletScripts(groupName, parent, name, "exit 0\n", "exit 0\r\n"),
+				PlanOnly: true,
+			},
+			{
+				// Several trailing newlines, spaces and a byte-order mark: all trimmed
+				// by Automox, so the update must apply cleanly too.
+				Config: configWorkletScripts(groupName, parent, name, "\ufeffexit 1 \n\n", "exit 0\r\n"),
+				ConfigPlanChecks: resource.ConfigPlanChecks{
+					PreApply: []plancheck.PlanCheck{
+						plancheck.ExpectResourceAction("automox_policy.test", plancheck.ResourceActionUpdate),
+					},
+				},
+				Check: resource.TestCheckResourceAttr("automox_policy.test",
+					"configuration.evaluation_code", "\ufeffexit 1 \n\n"),
+			},
+			{
+				// Import has no configured value to keep, so it records what Automox
+				// stores: the trimmed scripts.
+				ResourceName:      "automox_policy.test",
+				ImportState:       true,
+				ImportStateVerify: true,
+				ImportStateIdFunc: importIDOf("automox_policy.test"),
+				ImportStateVerifyIgnore: []string{
+					"schedule_days_of_week", "schedule_months_of_year",
+					"configuration.evaluation_code", "configuration.remediation_code",
+				},
+				ImportStateCheck: importedScripts(map[string]string{
+					"configuration.evaluation_code":  "exit 1",
+					"configuration.remediation_code": "exit 0",
+				}),
+			},
+		},
+	})
+}
+
+// TestAccPolicy_InstallationCodeWhitespace covers the third script attribute,
+// which only required-software policies use.
+func TestAccPolicy_InstallationCodeWhitespace(t *testing.T) {
+	acceptance.SkipUnlessAcceptance(t)
+	acceptance.PreCheck(t)
+	acceptance.RequireWriteScope(t)
+
+	parent := defaultGroupID(t)
+	groupName := acceptance.Name("reqsw-ws-target")
+	name := acceptance.Name("reqsw-ws")
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { acceptance.PreCheck(t) },
+		ProtoV6ProviderFactories: protoV6(),
+		CheckDestroy:             checkDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: configRequiredSoftwareCode(groupName, parent, name, "exit 0\r\n\n"),
+				Check: resource.TestCheckResourceAttr("automox_policy.test",
+					"configuration.installation_code", "exit 0\r\n\n"),
+			},
+			{
+				Config:   configRequiredSoftwareCode(groupName, parent, name, "exit 0\r\n\n"),
+				PlanOnly: true,
+			},
+			{
+				ResourceName:      "automox_policy.test",
+				ImportState:       true,
+				ImportStateVerify: true,
+				ImportStateIdFunc: importIDOf("automox_policy.test"),
+				// evaluation_code is unrelated to this test. Create reads the new
+				// policy from the list endpoint, which omits it on required-software
+				// policies, while import's GET returns it as "".
+				ImportStateVerifyIgnore: []string{"configuration.installation_code", "configuration.evaluation_code"},
+				ImportStateCheck: importedScripts(map[string]string{
+					"configuration.installation_code": "exit 0",
+				}),
+			},
+		},
+	})
+}
+
+// importedScripts asserts the imported policy holds the scripts as Automox
+// stores them.
+func importedScripts(want map[string]string) resource.ImportStateCheckFunc {
+	return func(states []*terraform.InstanceState) error {
+		if len(states) != 1 {
+			return fmt.Errorf("imported %d resources, want 1", len(states))
+		}
+		for key, value := range want {
+			if got := states[0].Attributes[key]; got != value {
+				return fmt.Errorf("imported %s = %q, want %q", key, got, value)
+			}
+		}
+		return nil
+	}
 }
 
 // TestAccPolicy_RequiredSoftware covers the third policy type, whose required
@@ -230,4 +358,63 @@ resource "automox_policy" "invalid" {
   }
 }
 `, configuration)
+}
+
+// configWorkletScripts is configWorklet with both scripts under test. The
+// scripts are quoted with %q, which HCL reads with the same escapes as Go.
+func configWorkletScripts(groupName string, parent int64, name, evaluation, remediation string) string {
+	return fmt.Sprintf(`
+resource "automox_server_group" "target" {
+  name                   = %q
+  refresh_interval       = 1440
+  parent_server_group_id = %d
+}
+
+resource "automox_policy" "test" {
+  name          = %q
+  policy_type   = "custom"
+  notes         = "script whitespace under test"
+  server_groups = [automox_server_group.target.id]
+
+  # Never runs: no scheduled day, and no automatic reboot.
+  schedule_time = "00:00"
+  schedule_days = 0
+
+  configuration = {
+    os_family        = "Windows"
+    evaluation_code  = %q
+    remediation_code = %q
+    auto_reboot      = false
+  }
+}
+`, groupName, parent, name, evaluation, remediation)
+}
+
+func configRequiredSoftwareCode(groupName string, parent int64, name, code string) string {
+	return fmt.Sprintf(`
+resource "automox_server_group" "target" {
+  name                   = %q
+  refresh_interval       = 1440
+  parent_server_group_id = %d
+}
+
+resource "automox_policy" "test" {
+  name          = %q
+  policy_type   = "required_software"
+  notes         = "installation_code whitespace under test"
+  server_groups = [automox_server_group.target.id]
+
+  # Never runs: no scheduled day, and no automatic reboot.
+  schedule_time = "00:00"
+  schedule_days = 0
+
+  configuration = {
+    os_family         = "Windows"
+    package_name      = "TESTING-never-installed"
+    package_version   = "1.0.0"
+    installation_code = %q
+    auto_reboot       = false
+  }
+}
+`, groupName, parent, name, code)
 }
