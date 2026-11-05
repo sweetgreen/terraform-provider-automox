@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.1.8 (2026-11-05)
+
+### Added
+
+- A new resource, `automox_device_group_assignment`, places an already-
+  registered device into a server group. This is for a device that already
+  has the agent installed and needs to move into a group Terraform manages:
+  the Automox Windows app's `GROUP=` parameter only reaches an installer run,
+  so it places new and reimaged devices but not devices that already have the
+  agent. Moving a device by hand in the console works too, but it is drift
+  the moment Automox is managed in Terraform.
+
+  Destroying this resource does not move the device back. It only removes the
+  assignment from state, because a destroy that returned a fleet of devices to
+  the organization's unpatched default group would be far more dangerous than
+  one that leaves them where they were.
+
 ## 0.1.7 (2026-10-12)
 
 ### Fixed
