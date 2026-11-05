@@ -83,6 +83,32 @@ func PreCheck(t *testing.T) {
 	}
 }
 
+// RequireOrganization skips the calling test unless the configured
+// organization is exactly want.
+//
+// Most acceptance tests here create disposable, inert objects -- an empty
+// group, an unscheduled policy -- so which organization they run against
+// barely matters: the TESTING prefix and the safety envelope in this package
+// make them harmless anywhere. automox_device_group_assignment is different.
+// It moves a device Automox already manages, and in a non-test organization
+// that device is a real employee laptop or a production retail register, not
+// a throwaway object this package created. Running that test against the
+// wrong organization would move real fleet, so this guard pins it to the one
+// organization that is safe regardless of what AUTOMOX_ORGANIZATION_ID
+// happens to be set to in the environment it runs in.
+func RequireOrganization(t *testing.T, want int64) {
+	t.Helper()
+
+	orgID, err := strconv.ParseInt(os.Getenv(EnvOrganizationID), 10, 64)
+	if err != nil {
+		t.Fatalf("%s is not a valid integer: %v", EnvOrganizationID, err)
+	}
+	if orgID != want {
+		t.Skipf("skipping: this test only runs against organization %d, but %s=%d",
+			want, EnvOrganizationID, orgID)
+	}
+}
+
 var (
 	writeScopeOnce   sync.Once
 	writeScopeResult error
