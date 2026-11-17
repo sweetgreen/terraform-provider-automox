@@ -106,7 +106,7 @@ It is recorded so that a change made there is visible. Without it the binding is
 
 Only the name and ID are kept. The secret's value is not in the API response at all, and `numPolicies` and `description` are deliberately excluded: `numPolicies` changes whenever the same secret is bound to some other policy, which is not drift in this one.
 - `server_count` (Number) Devices this policy currently applies to.
-- `status` (String) `active` or `inactive`.
+- `status` (String) `active` or `inactive`. Read-only: Automox sets it from the policy itself (a patch policy is `active` when `configuration.auto_patch` is true). It shows as known after apply when an update changes `configuration.auto_patch`, or adds groups to a policy that had none or removes all of them.
 - `uuid` (String) Policy UUID. Automox does not return one for `required_software` policies, where this stays null.
 
 <a id="nestedatt--configuration"></a>

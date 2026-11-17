@@ -182,9 +182,13 @@ func (r *policyResource) Schema(_ context.Context, _ resource.SchemaRequest, res
 				PlanModifiers: []planmodifier.Int64{int64planmodifier.UseStateForUnknown()},
 			},
 			"status": schema.StringAttribute{
-				Computed:            true,
-				MarkdownDescription: "`active` or `inactive`.",
-				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+				Computed: true,
+				MarkdownDescription: "`active` or `inactive`. Read-only: Automox sets it from the " +
+					"policy itself (a patch policy is `active` when `configuration.auto_patch` is " +
+					"true). It shows as known after apply when an update changes " +
+					"`configuration.auto_patch`, or adds groups to a policy that had none or " +
+					"removes all of them.",
+				PlanModifiers: []planmodifier.String{statusUseStateForUnknown()},
 			},
 			"server_count": schema.Int64Attribute{
 				Computed:            true,
