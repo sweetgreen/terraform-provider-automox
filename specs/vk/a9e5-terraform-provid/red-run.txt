@@ -1,0 +1,72 @@
+# Red run (T001): new tests against a shim returning stringplanmodifier.UseStateForUnknown() (the 0.1.8 behaviour).
+
+go: downloading github.com/hashicorp/terraform-plugin-framework-validators v0.19.0
+go: downloading github.com/hashicorp/terraform-plugin-go v0.31.0
+go: downloading github.com/hashicorp/terraform-plugin-log v0.10.0
+go: downloading github.com/hashicorp/terraform-plugin-testing v1.15.0
+go: downloading github.com/hashicorp/go-hclog v1.6.3
+go: downloading github.com/vmihailenco/msgpack/v5 v5.4.1
+go: downloading github.com/vmihailenco/msgpack v4.0.4+incompatible
+go: downloading github.com/hashicorp/go-plugin v1.7.0
+go: downloading github.com/mitchellh/go-testing-interface v1.14.1
+go: downloading google.golang.org/grpc v1.83.2
+go: downloading github.com/fatih/color v1.18.0
+go: downloading github.com/mattn/go-isatty v0.0.20
+go: downloading github.com/vmihailenco/tagparser/v2 v2.0.0
+go: downloading github.com/hashicorp/go-uuid v1.0.3
+go: downloading github.com/hashicorp/terraform-registry-address v0.4.0
+go: downloading google.golang.org/protobuf v1.36.11
+go: downloading github.com/hashicorp/terraform-exec v0.25.0
+go: downloading github.com/google/go-cmp v0.7.0
+go: downloading github.com/hashicorp/go-version v1.9.0
+go: downloading github.com/hashicorp/terraform-json v0.27.3-0.20260213134036-298b8f6b673a
+go: downloading github.com/hashicorp/terraform-plugin-sdk/v2 v2.40.0
+go: downloading github.com/hashicorp/go-cty v1.5.0
+go: downloading github.com/mattn/go-colorable v0.1.14
+go: downloading golang.org/x/sys v0.48.0
+go: downloading github.com/golang/protobuf v1.5.4
+go: downloading github.com/hashicorp/yamux v0.1.2
+go: downloading github.com/oklog/run v1.1.0
+go: downloading github.com/hashicorp/terraform-svchost v0.1.1
+go: downloading golang.org/x/net v0.60.0
+go: downloading github.com/zclconf/go-cty v1.18.1
+go: downloading github.com/hashicorp/hcl/v2 v2.24.0
+go: downloading github.com/hashicorp/hc-install v0.9.4
+go: downloading github.com/mitchellh/copystructure v1.2.0
+go: downloading github.com/mitchellh/mapstructure v1.5.0
+go: downloading golang.org/x/text v0.42.0
+go: downloading google.golang.org/genproto/googleapis/rpc v0.0.0-20260526163538-3dc84a4a5aaa
+go: downloading github.com/hashicorp/logutils v1.0.0
+go: downloading github.com/agext/levenshtein v1.2.2
+go: downloading github.com/apparentlymart/go-textseg/v15 v15.0.0
+go: downloading github.com/mitchellh/go-wordwrap v1.0.1
+go: downloading github.com/hashicorp/go-checkpoint v0.5.0
+go: downloading github.com/mitchellh/reflectwalk v1.0.2
+go: downloading github.com/hashicorp/go-multierror v1.1.1
+go: downloading github.com/ProtonMail/go-crypto v1.4.1
+go: downloading golang.org/x/mod v0.41.0
+go: downloading github.com/hashicorp/go-cleanhttp v0.5.2
+go: downloading github.com/hashicorp/errwrap v1.1.0
+go: downloading github.com/hashicorp/go-retryablehttp v0.7.8
+go: downloading golang.org/x/crypto v0.57.0
+go: downloading github.com/cloudflare/circl v1.6.3
+--- FAIL: TestUnitStatusUsesDriverAwareModifier (0.00s)
+    plan_modifiers_test.go:510: status plan modifier is stringplanmodifier.useStateForUnknownModifier, want statusUseStateForUnknownModifier
+--- FAIL: TestUnitStatusUnknownOnlyWhenItsDriversChange (0.00s)
+    --- FAIL: TestUnitStatusUnknownOnlyWhenItsDriversChange/terraform-infrastructure#2149:_groups_attached_and_auto_patch_enabled (0.00s)
+        plan_modifiers_test.go:481: status planned as "inactive", want known after apply: Automox may change it, and a promised value fails the apply after the write
+    --- FAIL: TestUnitStatusUnknownOnlyWhenItsDriversChange/groups_attached_to_a_policy_that_had_none (0.01s)
+        plan_modifiers_test.go:481: status planned as "inactive", want known after apply: Automox may change it, and a promised value fails the apply after the write
+    --- FAIL: TestUnitStatusUnknownOnlyWhenItsDriversChange/auto_patch_unknown_at_plan_time (0.01s)
+        plan_modifiers_test.go:481: status planned as "active", want known after apply: Automox may change it, and a promised value fails the apply after the write
+    --- FAIL: TestUnitStatusUnknownOnlyWhenItsDriversChange/every_group_removed (0.01s)
+        plan_modifiers_test.go:481: status planned as "active", want known after apply: Automox may change it, and a promised value fails the apply after the write
+    --- FAIL: TestUnitStatusUnknownOnlyWhenItsDriversChange/auto_patch_enabled (0.00s)
+        plan_modifiers_test.go:481: status planned as "inactive", want known after apply: Automox may change it, and a promised value fails the apply after the write
+    --- FAIL: TestUnitStatusUnknownOnlyWhenItsDriversChange/server_groups_unknown_at_plan_time (0.00s)
+        plan_modifiers_test.go:481: status planned as "active", want known after apply: Automox may change it, and a promised value fails the apply after the write
+    --- FAIL: TestUnitStatusUnknownOnlyWhenItsDriversChange/auto_patch_disabled (0.00s)
+        plan_modifiers_test.go:481: status planned as "active", want known after apply: Automox may change it, and a promised value fails the apply after the write
+FAIL
+FAIL	github.com/sweetgreen/terraform-provider-automox/internal/services/resources/policy	0.024s
+FAIL

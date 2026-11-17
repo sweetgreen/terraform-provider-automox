@@ -179,6 +179,107 @@ func TestAccPolicy_NamedScheduleRoundTrip(t *testing.T) {
 	})
 }
 
+// TestAccPolicy_StatusFollowsGroupsAndAutoPatch is the live counterpart of
+// TestUnitStatusUnknownOnlyWhenItsDriversChange: it takes a policy through the
+// shape that failed on sweetgreen/terraform-infrastructure#2149 -- no groups and
+// auto_patch off, then a group attached and auto_patch on in one apply -- and
+// requires the apply to succeed with the status Automox reports.
+//
+// Enabling auto_patch here is safe only because of the rest of the envelope:
+// the one group is created by this test and so holds no devices, and
+// schedule_days = 0 means the policy never runs. auto_reboot stays off.
+func TestAccPolicy_StatusFollowsGroupsAndAutoPatch(t *testing.T) {
+	acceptance.SkipUnlessAcceptance(t)
+	acceptance.PreCheck(t)
+	acceptance.RequireWriteScope(t)
+
+	parent := defaultGroupID(t)
+	groupName := acceptance.Name("status-target")
+	name := acceptance.Name("status")
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { acceptance.PreCheck(t) },
+		ProtoV6ProviderFactories: protoV6(),
+		CheckDestroy:             checkDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: configPatchStatus(groupName, parent, name, false),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("automox_policy.test", "server_groups.#", "0"),
+					resource.TestCheckResourceAttr("automox_policy.test", "configuration.auto_patch", "false"),
+					resource.TestCheckResourceAttr("automox_policy.test", "status", "inactive"),
+					resource.TestCheckResourceAttr("automox_policy.test", "schedule_days", "0"),
+				),
+			},
+			{
+				// The #2149 change. Before 0.1.9 this step failed with
+				// ".status: was cty.StringVal("inactive"), but now cty.StringVal("active")".
+				Config: configPatchStatus(groupName, parent, name, true),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("automox_policy.test", "server_groups.#", "1"),
+					resource.TestCheckResourceAttr("automox_policy.test", "configuration.auto_patch", "true"),
+					resource.TestCheckResourceAttr("automox_policy.test", "status", "active"),
+					resource.TestCheckResourceAttr("automox_policy.test", "schedule_days", "0"),
+					resource.TestCheckResourceAttr("automox_policy.test", "server_count", "0"),
+				),
+			},
+			{
+				Config:   configPatchStatus(groupName, parent, name, true),
+				PlanOnly: true,
+			},
+			{
+				// And back: detaching every group and turning auto_patch off must
+				// not fail the other way.
+				Config: configPatchStatus(groupName, parent, name, false),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("automox_policy.test", "server_groups.#", "0"),
+					resource.TestCheckResourceAttr("automox_policy.test", "status", "inactive"),
+				),
+			},
+		},
+	})
+}
+
+// configPatchStatus is a patch policy that never runs. With attached=false it
+// targets no groups and has auto_patch off; with attached=true it targets the
+// test-created (empty) group and has auto_patch on. The group exists in both so
+// the only diff between them is the one under test.
+func configPatchStatus(groupName string, parent int64, name string, attached bool) string {
+	groups := "[]"
+	if attached {
+		groups = "[automox_server_group.target.id]"
+	}
+	return fmt.Sprintf(`
+resource "automox_server_group" "target" {
+  name                   = %q
+  refresh_interval       = 1440
+  parent_server_group_id = %d
+}
+
+resource "automox_policy" "test" {
+  name          = %q
+  policy_type   = "patch"
+  notes         = "status flip: created by the provider acceptance suite"
+  server_groups = %s
+
+  # Never runs: no scheduled day. auto_patch is the variable under test.
+  schedule_time = "00:00"
+  schedule_days = 0
+
+  configuration = {
+    patch_rule           = "filter"
+    filter_type          = "include"
+    filters              = ["Google Chrome"]
+    auto_patch           = %t
+    auto_reboot          = false
+    notify_user          = false
+    is_patch_tuesday     = false
+    patch_tuesday_offset = 0
+  }
+}
+`, groupName, parent, name, groups, attached)
+}
+
 func configPatch(groupName string, parent int64, name, filterType, filters string) string {
 	return fmt.Sprintf(`
 resource "automox_server_group" "target" {

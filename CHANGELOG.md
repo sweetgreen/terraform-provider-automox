@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.1.9 (unreleased)
+
+### Fixed
+
+- An update that turns `configuration.auto_patch` on or off, or that adds
+  groups to a policy that had none (or removes all of them), no longer fails
+  with "Provider produced inconsistent result after apply" on `.status`.
+
+  Automox sets `status` itself. Every patch policy in the production
+  organization is `active` exactly when `auto_patch` is true. 0.1.8 and
+  earlier planned the old `status` on every update, so the apply failed after
+  Automox had already accepted the change. This happened on
+  terraform-infrastructure#2149, when a retail BOH ring's group was attached
+  and `auto_patch` enabled in one apply, and the policy looked unchanged when
+  it was not.
+
+  `status` now shows as known after apply for those changes only. Every other
+  update, including moving a policy between non-empty group lists, still plans
+  the current `status`, so those plans show no new diff. `status` remains
+  read-only, and no `lifecycle { ignore_changes }` is needed.
+
+### Security
+
+- Built with Go 1.26.11, which fixes GO-2026-6859 in `net/http`.
+
 ## 0.1.8 (2026-11-05)
 
 ### Added
