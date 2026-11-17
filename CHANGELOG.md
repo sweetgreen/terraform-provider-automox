@@ -21,6 +21,10 @@
   the current `status`, so those plans show no new diff. `status` remains
   read-only, and no `lifecycle { ignore_changes }` is needed.
 
+### Security
+
+- Built with Go 1.26.11, which fixes GO-2026-6859 in `net/http`.
+
 ## 0.1.8 (2026-11-05)
 
 ### Added
