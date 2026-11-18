@@ -240,6 +240,105 @@ func TestAccPolicy_StatusFollowsGroupsAndAutoPatch(t *testing.T) {
 	})
 }
 
+// TestAccPolicy_AdvancedFilterAppend is the live regression for PLA-464
+// (sweetgreen/terraform-infrastructure#2275). Appending an advanced_filter entry
+// to an existing policy applied in Automox but failed with
+// ".configuration.advanced_filter[2].op: was null, but now
+// cty.StringVal("does-not-contain")". Changing the condition of an entry that
+// already had op in state failed the same way. The offline equivalent, which
+// runs in CI, is TestUnitAppendingAdvancedFilterIsConsistentAfterApply.
+//
+// The policy cannot run: it targets an empty group this test creates, has no
+// scheduled day, and auto_patch and auto_reboot are off.
+func TestAccPolicy_AdvancedFilterAppend(t *testing.T) {
+	acceptance.SkipUnlessAcceptance(t)
+	acceptance.PreCheck(t)
+	acceptance.RequireWriteScope(t)
+
+	parent := defaultGroupID(t)
+	groupName := acceptance.Name("advanced-target")
+	name := acceptance.Name("advanced")
+
+	two := `
+      { left = "patch-source", condition = "is", right = "windowsupdate" },
+      { left = "display-name", condition = "does-not-contain", right = "Preview" },`
+	three := two + `
+      { left = "display-name", condition = "does-not-contain", op = null, right = "SQL Server" },`
+	changed := strings.Replace(three, `condition = "is",`, `condition = "is-not",`, 1)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { acceptance.PreCheck(t) },
+		ProtoV6ProviderFactories: protoV6(),
+		CheckDestroy:             checkDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: configPatchAdvanced(groupName, parent, name, two),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("automox_policy.test", "configuration.advanced_filter.#", "2"),
+					resource.TestCheckResourceAttr("automox_policy.test", "schedule_days", "0"),
+				),
+			},
+			{
+				Config: configPatchAdvanced(groupName, parent, name, three),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("automox_policy.test", "configuration.advanced_filter.#", "3"),
+					resource.TestCheckResourceAttr("automox_policy.test",
+						"configuration.advanced_filter.2.condition", "does-not-contain"),
+					resource.TestCheckNoResourceAttr("automox_policy.test", "configuration.advanced_filter.2.op"),
+				),
+			},
+			{
+				Config:   configPatchAdvanced(groupName, parent, name, three),
+				PlanOnly: true,
+			},
+			{
+				Config: configPatchAdvanced(groupName, parent, name, changed),
+				Check: resource.TestCheckResourceAttr("automox_policy.test",
+					"configuration.advanced_filter.0.condition", "is-not"),
+			},
+			{
+				Config:   configPatchAdvanced(groupName, parent, name, changed),
+				PlanOnly: true,
+			},
+		},
+	})
+}
+
+// configPatchAdvanced is a patch policy that never runs, selecting patches with
+// the given advanced_filter entries.
+func configPatchAdvanced(groupName string, parent int64, name, filters string) string {
+	return fmt.Sprintf(`
+resource "automox_server_group" "target" {
+  name                   = %q
+  refresh_interval       = 1440
+  parent_server_group_id = %d
+}
+
+resource "automox_policy" "test" {
+  name          = %q
+  policy_type   = "patch"
+  notes         = "advanced filters: created by the provider acceptance suite"
+  server_groups = [automox_server_group.target.id]
+
+  # Never runs: no scheduled day, and nothing automatic.
+  schedule_time = "00:00"
+  schedule_days = 0
+
+  configuration = {
+    patch_rule           = "advanced"
+    filter_type          = "all"
+    advanced_filter      = [%s
+    ]
+    auto_patch           = false
+    auto_reboot          = false
+    notify_user          = false
+    is_patch_tuesday     = false
+    patch_tuesday_offset = 0
+  }
+}
+`, groupName, parent, name, filters)
+}
+
 // configPatchStatus is a patch policy that never runs. With attached=false it
 // targets no groups and has auto_patch off; with attached=true it targets the
 // test-created (empty) group and has auto_patch on. The group exists in both so

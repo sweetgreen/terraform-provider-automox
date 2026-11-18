@@ -3,6 +3,7 @@ package policy
 import (
 	"context"
 	"fmt"
+	"maps"
 	"sort"
 	"strings"
 
@@ -323,6 +324,8 @@ func flatten(ctx context.Context, api *apiPolicy, prior policyModel) (policyMode
 
 	cfg, cfgDiags := configurationFromAPI(ctx, api.Configuration)
 	diags.Append(cfgDiags...)
+	cfg, cfgDiags = mirrorLegacyAdvancedFilterOp(cfg, prior.Configuration)
+	diags.Append(cfgDiags...)
 	model.Configuration = cfg
 
 	// Recorded so a binding changed in the console is visible; see secretBindings.
@@ -379,33 +382,135 @@ func configurationFromAPI(ctx context.Context, api map[string]any) (types.Object
 			values[name] = nullOf(typ)
 			continue
 		}
-		if name == "advanced_filter" {
-			raw = mirrorLegacyAdvancedFilterOp(raw)
-		}
 		values[name] = goToAttr(ctx, typ, raw)
 	}
 
 	return types.ObjectValue(attrTypes, values)
 }
 
-// mirrorLegacyAdvancedFilterOp keeps configurations and state created with
-// v0.1.3 stable after a read. The write path always removes this alias before
-// sending JSON, so Automox still receives only `condition`.
-func mirrorLegacyAdvancedFilterOp(raw any) any {
-	rules, ok := raw.([]any)
-	if !ok {
-		return raw
+// The deprecated advanced_filter `op` attribute exists only so state and
+// configurations written against v0.1.3 stay readable. Automox never stores it
+// (it returns op: null on every entry), so its value is the provider's choice,
+// and that choice has to agree with what Terraform planned.
+//
+// It is Optional+Computed with UseStateForUnknown, and the framework's
+// UseStateForUnknown copies the prior element's value without checking it
+// exists: an entry appended to the list plans op as null, while an existing
+// entry plans whatever state held. Mirroring condition into op on every read,
+// as v0.1.4 to v0.1.8 did, therefore broke both an appended entry
+// (PLA-464: "advanced_filter[6].op: was null, but now
+// cty.StringVal("does-not-contain")") and a condition change on an existing
+// one (op: was "is", but now "is-not").
+//
+// So op is decided per entry from what Terraform already holds for it:
+//   - after a read, mirrorLegacyAdvancedFilterOp mirrors condition only into
+//     entries whose prior op was set, which keeps a v0.1.3 configuration that
+//     sets op in step with the live condition and leaves every other entry null;
+//   - after an apply, keepPlannedAdvancedFilterOp returns exactly the planned op.
+
+// mirrorLegacyAdvancedFilterOp sets op on each advanced_filter entry of cfg,
+// freshly read from Automox, to that entry's condition when the same entry in
+// prior state had a non-null op, and to null otherwise. An import has no prior
+// entries, so it leaves op null throughout.
+func mirrorLegacyAdvancedFilterOp(cfg, prior types.Object) (types.Object, diag.Diagnostics) {
+	priorOps := advancedFilterOps(prior)
+	return setAdvancedFilterOps(cfg, func(i int, rule map[string]attr.Value) attr.Value {
+		if i < len(priorOps) && !priorOps[i].IsNull() && !priorOps[i].IsUnknown() {
+			return rule["condition"]
+		}
+		return types.StringNull()
+	})
+}
+
+// keepPlannedAdvancedFilterOp sets op on each advanced_filter entry of cfg,
+// read back after an apply, to the op Terraform planned for that entry. An
+// unknown plan (a create, where there is no state to carry forward) resolves to
+// null. op is never sent to Automox, so the plan is the only source for it.
+func keepPlannedAdvancedFilterOp(cfg, plan types.Object) (types.Object, diag.Diagnostics) {
+	plannedOps := advancedFilterOps(plan)
+	return setAdvancedFilterOps(cfg, func(i int, _ map[string]attr.Value) attr.Value {
+		if i < len(plannedOps) && !plannedOps[i].IsUnknown() {
+			return plannedOps[i]
+		}
+		return types.StringNull()
+	})
+}
+
+// advancedFilterOps returns the op of each advanced_filter entry in cfg, in
+// list order. A null or unknown configuration or list yields none.
+func advancedFilterOps(cfg types.Object) []types.String {
+	if cfg.IsNull() || cfg.IsUnknown() {
+		return nil
 	}
-	for _, rawRule := range rules {
-		rule, ok := rawRule.(map[string]any)
-		if !ok {
+	list, ok := cfg.Attributes()["advanced_filter"].(types.List)
+	if !ok || list.IsNull() || list.IsUnknown() {
+		return nil
+	}
+	ops := make([]types.String, 0, len(list.Elements()))
+	for _, elem := range list.Elements() {
+		rule, ok := elem.(types.Object)
+		if !ok || rule.IsNull() || rule.IsUnknown() {
+			ops = append(ops, types.StringUnknown())
 			continue
 		}
-		if condition, present := rule["condition"]; present {
-			rule["op"] = condition
+		op, ok := rule.Attributes()["op"].(types.String)
+		if !ok {
+			op = types.StringUnknown()
 		}
+		ops = append(ops, op)
 	}
-	return rules
+	return ops
+}
+
+// setAdvancedFilterOps rebuilds cfg with op on each advanced_filter entry
+// replaced by opFor(index, entry attributes).
+func setAdvancedFilterOps(
+	cfg types.Object, opFor func(int, map[string]attr.Value) attr.Value,
+) (types.Object, diag.Diagnostics) {
+	var diags diag.Diagnostics
+	if cfg.IsNull() || cfg.IsUnknown() {
+		return cfg, diags
+	}
+	attrs := cfg.Attributes()
+	list, ok := attrs["advanced_filter"].(types.List)
+	if !ok || list.IsNull() || list.IsUnknown() {
+		return cfg, diags
+	}
+	ruleType, ok := list.ElementType(context.Background()).(types.ObjectType)
+	if !ok {
+		return cfg, diags
+	}
+
+	elems := make([]attr.Value, 0, len(list.Elements()))
+	for i, elem := range list.Elements() {
+		rule, ok := elem.(types.Object)
+		if !ok || rule.IsNull() || rule.IsUnknown() {
+			elems = append(elems, elem)
+			continue
+		}
+		values := maps.Clone(rule.Attributes())
+		values["op"] = opFor(i, values)
+		updated, d := types.ObjectValue(ruleType.AttrTypes, values)
+		diags.Append(d...)
+		elems = append(elems, updated)
+	}
+	if diags.HasError() {
+		return cfg, diags
+	}
+
+	newList, d := types.ListValue(ruleType, elems)
+	diags.Append(d...)
+	if diags.HasError() {
+		return cfg, diags
+	}
+	newAttrs := maps.Clone(attrs)
+	newAttrs["advanced_filter"] = newList
+	out, d := types.ObjectValue(cfg.AttributeTypes(context.Background()), newAttrs)
+	diags.Append(d...)
+	if diags.HasError() {
+		return cfg, diags
+	}
+	return out, diags
 }
 
 func optionalString(v *string) types.String {
