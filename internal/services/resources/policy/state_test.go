@@ -64,14 +64,179 @@ func TestUnitAdvancedFilterConditionRoundTrips(t *testing.T) {
 	}
 }
 
-func TestUnitAPIRuleMirrorsLegacyOpInState(t *testing.T) {
-	raw := []any{map[string]any{
-		"left": "patch-source", "condition": "is", "right": "windowsupdate",
-	}}
-	rules := mirrorLegacyAdvancedFilterOp(raw).([]any)
-	got := rules[0].(map[string]any)
-	if got["op"] != "is" {
-		t.Errorf("legacy op = %v, want condition value is", got["op"])
+// advancedFilterConfig builds a configuration object holding only the given
+// advanced_filter entries. Each entry is {left, condition, op, right}; "?"
+// means unknown and "" means null.
+func advancedFilterConfig(t *testing.T, entries ...[4]string) types.Object {
+	t.Helper()
+	attrTypes := configurationAttrTypes()
+	ruleType := attrTypes["advanced_filter"].(types.ListType).ElemType.(types.ObjectType)
+	str := func(s string) types.String {
+		switch s {
+		case "?":
+			return types.StringUnknown()
+		case "":
+			return types.StringNull()
+		}
+		return types.StringValue(s)
+	}
+	rules := make([]attr.Value, 0, len(entries))
+	for _, e := range entries {
+		rule, diags := types.ObjectValue(ruleType.AttrTypes, map[string]attr.Value{
+			"left": str(e[0]), "condition": str(e[1]), "op": str(e[2]), "right": str(e[3]),
+		})
+		if diags.HasError() {
+			t.Fatalf("construct rule: %v", diags.Errors())
+		}
+		rules = append(rules, rule)
+	}
+	list, diags := types.ListValue(ruleType, rules)
+	if diags.HasError() {
+		t.Fatalf("construct list: %v", diags.Errors())
+	}
+	values := map[string]attr.Value{}
+	for name, typ := range attrTypes {
+		values[name] = nullOf(typ)
+	}
+	values["advanced_filter"] = list
+	cfg, diags := types.ObjectValue(attrTypes, values)
+	if diags.HasError() {
+		t.Fatalf("construct configuration: %v", diags.Errors())
+	}
+	return cfg
+}
+
+// opsOf returns each entry's op, rendering null as "" and unknown as "?".
+func opsOf(t *testing.T, cfg types.Object) []string {
+	t.Helper()
+	var out []string
+	for _, op := range advancedFilterOps(cfg) {
+		switch {
+		case op.IsUnknown():
+			out = append(out, "?")
+		case op.IsNull():
+			out = append(out, "")
+		default:
+			out = append(out, op.ValueString())
+		}
+	}
+	return out
+}
+
+// retailQSRFilters is what Automox returns for the retail QSR Windows Updates
+// policies after sweetgreen/terraform-infrastructure#2275 appended the third
+// entry. Automox returns op: null on every entry.
+func retailQSRFilters(t *testing.T) types.Object {
+	t.Helper()
+	cfg, diags := configurationFromAPI(context.Background(), map[string]any{
+		"advanced_filter": []any{
+			map[string]any{"left": "patch-source", "condition": "is-not", "op": nil, "right": "windowsupdate"},
+			map[string]any{"left": "display-name", "condition": "does-not-contain", "op": nil, "right": "Preview"},
+			map[string]any{"left": "display-name", "condition": "does-not-contain", "op": nil, "right": "SQL Server"},
+		},
+	})
+	if diags.HasError() {
+		t.Fatalf("configurationFromAPI: %v", diags.Errors())
+	}
+	if got := opsOf(t, cfg); strings.Join(got, ",") != ",," {
+		t.Fatalf("raw API conversion populated op = %q, want all null", got)
+	}
+	return cfg
+}
+
+// TestUnitAppliedAdvancedFilterOpMatchesPlan is the state-path regression for
+// PLA-464. Appending an entry to advanced_filter planned its op as null (the
+// framework's UseStateForUnknown copies a missing prior element as null), and
+// the read after apply mirrored condition into it, so Terraform reported
+// ".configuration.advanced_filter[6].op: was null, but now
+// cty.StringVal("does-not-contain")". The applied op must be the planned op.
+func TestUnitAppliedAdvancedFilterOpMatchesPlan(t *testing.T) {
+	api := retailQSRFilters(t)
+	plan := advancedFilterConfig(t,
+		// Existing entry: op carried from state, where an earlier read mirrored
+		// the old condition. Its condition is changing in this apply.
+		[4]string{"patch-source", "is-not", "is", "windowsupdate"},
+		// Existing entry whose state op was already null.
+		[4]string{"display-name", "does-not-contain", "", "Preview"},
+		// The appended entry.
+		[4]string{"display-name", "does-not-contain", "", "SQL Server"},
+	)
+
+	// The read half of the apply, then the apply-specific step Create and
+	// Update run after it.
+	read, diags := mirrorLegacyAdvancedFilterOp(api, plan)
+	if diags.HasError() {
+		t.Fatalf("mirror: %v", diags.Errors())
+	}
+	applied, diags := keepPlannedAdvancedFilterOp(read, plan)
+	if diags.HasError() {
+		t.Fatalf("keep planned: %v", diags.Errors())
+	}
+
+	if got, want := opsOf(t, applied), opsOf(t, plan); strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Errorf("applied op = %q, want planned %q", got, want)
+	}
+}
+
+// TestUnitAppliedAdvancedFilterOpUnknownBecomesNull covers create, where there
+// is no state for UseStateForUnknown to copy and the planned op is unknown.
+func TestUnitAppliedAdvancedFilterOpUnknownBecomesNull(t *testing.T) {
+	api := retailQSRFilters(t)
+	plan := advancedFilterConfig(t,
+		[4]string{"patch-source", "is-not", "?", "windowsupdate"},
+		[4]string{"display-name", "does-not-contain", "is", "Preview"}, // v0.1.3 configuration
+		[4]string{"display-name", "does-not-contain", "?", "SQL Server"},
+	)
+	applied, diags := keepPlannedAdvancedFilterOp(api, plan)
+	if diags.HasError() {
+		t.Fatalf("keep planned: %v", diags.Errors())
+	}
+	if got := strings.Join(opsOf(t, applied), ","); got != ",is," {
+		t.Errorf("applied op = %q, want \",is,\"", got)
+	}
+}
+
+// TestUnitReadMirrorsOpOnlyForEntriesThatHadIt keeps v0.1.3 configurations,
+// which set op instead of condition, in step with the live condition after a
+// refresh, while an entry that never had op stays null so the next append does
+// not trip over it.
+func TestUnitReadMirrorsOpOnlyForEntriesThatHadIt(t *testing.T) {
+	api := retailQSRFilters(t)
+	cases := map[string]struct {
+		prior types.Object
+		want  string
+	}{
+		"state written by v0.1.4-v0.1.8": {
+			prior: advancedFilterConfig(t,
+				[4]string{"patch-source", "is", "is", "windowsupdate"},
+				[4]string{"display-name", "does-not-contain", "does-not-contain", "Preview"},
+				// After the failed PLA-464 apply Terraform saved the mirrored value.
+				[4]string{"display-name", "does-not-contain", "does-not-contain", "SQL Server"},
+			),
+			want: "is-not,does-not-contain,does-not-contain",
+		},
+		"entry appended since the last refresh": {
+			prior: advancedFilterConfig(t,
+				[4]string{"patch-source", "is", "is", "windowsupdate"},
+				[4]string{"display-name", "does-not-contain", "", "Preview"},
+			),
+			want: "is-not,,",
+		},
+		"import has no prior configuration": {
+			prior: types.ObjectNull(configurationAttrTypes()),
+			want:  ",,",
+		},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			got, diags := mirrorLegacyAdvancedFilterOp(api, tc.prior)
+			if diags.HasError() {
+				t.Fatalf("mirror: %v", diags.Errors())
+			}
+			if ops := strings.Join(opsOf(t, got), ","); ops != tc.want {
+				t.Errorf("op after read = %q, want %q", ops, tc.want)
+			}
+		})
 	}
 }
 

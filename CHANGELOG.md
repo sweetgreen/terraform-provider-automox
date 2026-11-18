@@ -4,6 +4,25 @@
 
 ### Fixed
 
+- Adding an entry to `configuration.advanced_filter` no longer fails the apply
+  with "Provider produced inconsistent result after apply:
+  .configuration.advanced_filter[N].op: was null, but now
+  cty.StringVal("does-not-contain")". Changing the `condition` of an existing
+  entry no longer fails the same way on `op` either.
+
+  Automox applied the change both times, so these were false failures, and a
+  re-plan showed no changes. This happened on terraform-infrastructure#2275,
+  when a "SQL Server" exclusion was appended to the five retail QSR Windows
+  Updates policies. Since 0.1.4 every read had copied `condition` into the
+  deprecated `op` alias, while Terraform planned `op` from prior state: null
+  for a new entry, and the old condition for an existing one.
+
+  `op` is now set only where it was already set. After an apply it is exactly
+  what Terraform planned. After a refresh `condition` is copied into it only
+  for entries whose `op` was set, which keeps 0.1.3 configurations that set
+  `op` in step with Automox. New entries, and policies imported from now on,
+  leave `op` null. No configuration changes are needed.
+
 - An update that turns `configuration.auto_patch` on or off, or that adds
   groups to a policy that had none (or removes all of them), no longer fails
   with "Provider produced inconsistent result after apply" on `.status`.

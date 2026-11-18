@@ -103,6 +103,12 @@ func (r *policyResource) Create(ctx context.Context, req resource.CreateRequest,
 	if resp.Diagnostics.HasError() {
 		return
 	}
+	// op is never sent to Automox; see keepPlannedAdvancedFilterOp.
+	state.Configuration, diags = keepPlannedAdvancedFilterOp(state.Configuration, plan.Configuration)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 
 	tflog.Debug(ctx, "created an Automox policy", map[string]any{
 		"id": created.ID, "name": created.Name, "type": created.PolicyTypeName,
@@ -219,6 +225,12 @@ func (r *policyResource) Update(ctx context.Context, req resource.UpdateRequest,
 	}
 
 	updated, diags := flatten(ctx, fetched, plan)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	// op is never sent to Automox; see keepPlannedAdvancedFilterOp.
+	updated.Configuration, diags = keepPlannedAdvancedFilterOp(updated.Configuration, plan.Configuration)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
